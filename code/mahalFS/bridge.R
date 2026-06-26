@@ -1,6 +1,5 @@
 # Layer-2 R surface for spec 003. The actual MATLAB/FSDA call stays in the
 # Python bridge; this file owns reticulate setup and R-side shape checks.
-DEFAULT_PYTHON_ENV = "C:\\Users\\mrian\\miniconda3"
 
 .bridge_dir = local({
   # Prefer source(".../bridge.R") metadata, then fall back to common working
@@ -32,8 +31,20 @@ DEFAULT_PYTHON_ENV = "C:\\Users\\mrian\\miniconda3"
 }
 
 .resolve_python = function(python) {
+  # No machine-specific default in the repo: prefer FSDA_DEV_VENV (passed in as
+  # `python`), then the active interpreter on PATH (python or python3, so macOS
+  # works too), else stop with guidance.
   if (is.null(python) || !nzchar(python)) {
-    python = DEFAULT_PYTHON_ENV
+    found = Sys.which(c("python", "python3"))
+    found = found[nzchar(found)]
+    python = if (length(found) > 0) unname(found[[1]]) else ""
+  }
+  if (!nzchar(python)) {
+    stop(
+      "No Python interpreter found. Set FSDA_DEV_VENV to your venv's python ",
+      "executable (Scripts\\python.exe on Windows, bin/python on macOS) that ",
+      "has matlabengine installed."
+    )
   }
   normalizePath(python, winslash = "/", mustWork = FALSE)
 }

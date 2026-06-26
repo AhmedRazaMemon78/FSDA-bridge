@@ -56,8 +56,8 @@
 *Ordered checklist. Priorities: `#p1` blocking, `#p2` this round, `#p3` nice-to-have.*
 
 - [x] #p1 Write `code/mahalFS/bridge.R` with `start_bridge`, `mahal_fs`, and `stop_bridge`.
-- [x] #p1 In `bridge.R`, configure `reticulate` to use `FSDA_DEV_VENV` when set, otherwise the pinned
-  default venv `C:\Users\LucaI\fsda_dev_env`.
+- [x] #p1 In `bridge.R`, configure `reticulate` to use `FSDA_DEV_VENV` when set, otherwise the active
+  `python` on PATH; if neither resolves, stop with a clear message (no machine-specific path is baked in).
 - [x] #p1 Validate R-side input shapes and numeric types before crossing into Python.
 - [x] #p1 Write `code/mahalFS/check_mahalFS_r.R` using the same fixed input as spec 001 and tolerance
   `1e-9`.
@@ -96,3 +96,10 @@
   is also source-friendly: `source(".../check_mahalFS_r.R")` runs the check and returns to R, while
   `Rscript` still exits with the check status. Verified **PASS**, max abs diff `0.000e+00`, using
   `C:/Users/mrian/miniconda3/python.exe`.
+
+- 2026-06-27 - Portability fix (collaborative repo): removed the hardcoded `DEFAULT_PYTHON_ENV =
+  "C:\Users\mrian\miniconda3"` default from `bridge.R`. `.resolve_python()` now resolves
+  `FSDA_DEV_VENV` -> active `python` on PATH -> clear `stop()` if neither is found, so no
+  machine-specific path is baked into the repo. README / CONSTITUTION / `check_mahalFS.py` docstring
+  genericized to `FSDA_DEV_VENV`. Agreement gate unchanged; re-run `check_mahalFS_r.R` with
+  `FSDA_DEV_VENV` set to confirm **PASS**.

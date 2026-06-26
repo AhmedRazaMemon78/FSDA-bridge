@@ -29,14 +29,35 @@ You need:
 
 1. **MATLAB R2026a** with the **FSDA Add-On** installed (so `mahalFS` and friends are on the MATLAB
    path — check with `which mahalFS` inside MATLAB).
-2. The shared **Python venv** at `C:\Users\LucaI\fsda_dev_env` (Python 3.12, `numpy`,
-   `matlabengine==26.1.*` from PyPI). Override the location with the `FSDA_DEV_VENV` environment
-   variable if yours lives elsewhere.
+2. A **Python venv** with Python 3.12, `numpy`, and `matlabengine==26.1.*` (from PyPI). The bridge
+   resolves the interpreter in this order, so nothing machine-specific is committed: **(a)** an
+   activated venv, **(b)** the `FSDA_DEV_VENV` environment variable, **(c)** `python` / `python3` on
+   `PATH`.
 
-Run the spec 001 worked example:
+Run the spec 001 worked example. **Easiest — activate your venv, then run** (identical on Windows and
+macOS):
 
 ```powershell
-C:\Users\LucaI\fsda_dev_env\Scripts\python.exe code\mahalFS\check_mahalFS.py
+# Windows (PowerShell), venv activated
+python code\mahalFS\check_mahalFS.py
+```
+
+```bash
+# macOS / Linux, venv activated
+python code/mahalFS/check_mahalFS.py
+```
+
+Prefer not to activate? Point `FSDA_DEV_VENV` at the venv's **python executable** once — it survives
+new shells:
+
+```powershell
+# Windows: persists for future shells (not the current one)
+setx FSDA_DEV_VENV "C:\path\to\your\fsda_dev_env\Scripts\python.exe"
+```
+
+```bash
+# macOS / Linux: add to ~/.zshrc (or ~/.bashrc)
+export FSDA_DEV_VENV="/path/to/your/fsda_dev_env/bin/python"
 ```
 
 It starts a MATLAB engine, calls the genuine FSDA `mahalFS`, compares against a pure-numpy reference,

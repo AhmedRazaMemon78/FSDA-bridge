@@ -23,12 +23,13 @@ local prototype — **no package is produced, no CI is required.**
 | Component | Pin |
 |-----------|-----|
 | MATLAB | **R2026a**, with the **FSDA Add-On** installed (routines on the MATLAB path; verify `which mahalFS`) |
-| FSDA install | `C:\Users\LucaI\AppData\Roaming\MathWorks\MATLAB Add-Ons\Toolboxes\FSDA` (Add-On; auto on path) |
-| Python venv | `C:\Users\LucaI\fsda_dev_env` — Python **3.12.10**, `numpy`, `matlabengine==26.1.*` |
+| FSDA install | per-user MATLAB Add-On dir (`...\MATLAB Add-Ons\Toolboxes\FSDA`; auto on path) |
+| Python venv | machine-specific — set `FSDA_DEV_VENV` to the venv's **python executable** (`...\Scripts\python.exe` on Windows, `.../bin/python` on macOS); Python **3.12.10**, `numpy`, `matlabengine==26.1.*` |
 | engine install | from **PyPI** (`pip install "matlabengine==26.1.*"`) — the matlabroot build fails on read-only Program Files |
 
-The venv location is overridable with the **`FSDA_DEV_VENV`** environment variable. `matlab.engine` is
-locked to the installed MATLAB release — keep the MATLAB ↔ engine-package versions paired.
+The interpreter is selected by an activated venv, else **`FSDA_DEV_VENV`** (the venv's python
+executable), else `python` / `python3` on `PATH`. `matlab.engine` is locked to the installed MATLAB
+release — keep the MATLAB ↔ engine-package versions paired.
 
 ## 3. Bridge architecture
 
