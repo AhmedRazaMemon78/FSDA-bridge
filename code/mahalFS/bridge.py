@@ -47,12 +47,22 @@ def mahal_fs(eng, Y: np.ndarray, MU: np.ndarray, SIGMA: np.ndarray) -> np.ndarra
     Every value is shape/dtype-checked at the boundary; no silent reshape.
     """
     Y = np.asarray(Y, dtype=float)
-    MU = np.asarray(MU, dtype=float).reshape(1, -1)
+    MU = np.asarray(MU, dtype=float)
     SIGMA = np.asarray(SIGMA, dtype=float)
 
+    if Y.ndim != 2:
+        raise ValueError(f"Y must be a 2D matrix, got shape {Y.shape}")
     n, v = Y.shape
-    assert MU.shape == (1, v), f"MU must be 1x{v}, got {MU.shape}"
-    assert SIGMA.shape == (v, v), f"SIGMA must be {v}x{v}, got {SIGMA.shape}"
+
+    if MU.ndim == 1:
+        MU = MU.reshape(1, -1)
+    elif MU.ndim != 2 or MU.shape[0] != 1:
+        raise ValueError(f"MU must be shape ({v},) or (1, {v}), got {MU.shape}")
+    if MU.shape != (1, v):
+        raise ValueError(f"MU must be shape ({v},) or (1, {v}), got {MU.shape}")
+
+    if SIGMA.shape != (v, v):
+        raise ValueError(f"SIGMA must be shape ({v}, {v}), got {SIGMA.shape}")
 
     Ym = matlab.double(Y.tolist())
     MUm = matlab.double(MU.tolist())
@@ -60,10 +70,21 @@ def mahal_fs(eng, Y: np.ndarray, MU: np.ndarray, SIGMA: np.ndarray) -> np.ndarra
 
     d = eng.mahalFS(Ym, MUm, SIGMAm)
     d = np.asarray(d, dtype=float).reshape(-1)
-    assert d.shape == (n,), f"expected ({n},), got {d.shape}"
+    if d.shape != (n,):
+        raise RuntimeError(f"expected FSDA output shape ({n},), got {d.shape}")
     return d
 
 
 def stop_engine(eng) -> None:
     """Shut the engine session down."""
     eng.quit()
+
+
+def matlab_version(eng) -> str:
+    """Return the MATLAB version string for diagnostics."""
+    return str(eng.version())
+
+
+def which_mahalfs(eng) -> str:
+    """Return the resolved `mahalFS` path for diagnostics."""
+    return str(eng.which("mahalFS"))

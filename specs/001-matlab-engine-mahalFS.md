@@ -35,7 +35,7 @@ distance of each row of `Y` from `MU` under covariance `SIGMA`.
     version triple (Python / MATLAB / engine) and writes inputs+outputs to `reference/`.
 - **Signatures / shapes:** `Y` is `(n, v)`, `MU` is `(v,)` or `(1, v)` (forced to `1×v`), `SIGMA` is
   `(v, v)`; output is `(n,)`.
-- **Marshalling notes:** convert via `matlab.double(arr.tolist())`; assert `MU.shape == (1, v)` and
+- **Marshalling notes:** convert via `matlab.double(arr.tolist())`; validate `MU.shape == (1, v)` and
   `SIGMA.shape == (v, v)` before the call, and `d.shape == (n,)` after. No silent reshape.
 - **Reference oracle:** the FSDA call itself; gold output saved to `code/mahalFS/reference/`.
 
@@ -53,3 +53,5 @@ distance of each row of `Y` from `MU` under covariance `SIGMA`.
   Env: Python 3.12.10 · MATLAB R2026a Update 2 · `matlabengine==26.1.12` · FSDA Add-On at
   `...\MATLAB Add-Ons\Toolboxes\FSDA\utilities_stat\mahalFS.m`. Gold output in
   `code/mahalFS/reference/mahalFS_check.csv`.
+- 2026-06-26 - Review tightened bridge boundary checks: explicit `ValueError`/`RuntimeError` instead of
+  optimized-away assertions; `mahalFS` agreement check still **PASS**, max abs diff `0.000e+00`.
