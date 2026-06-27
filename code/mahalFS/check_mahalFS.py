@@ -1,5 +1,5 @@
 """Agreement check: FSDA `mahalFS` through matlab.engine vs a numpy reference.
-
+exi
 Run with the project venv's Python (the script's own dir is put on sys.path so
 `import bridge` works). With an activated venv just `python check_mahalFS.py`; or
 point FSDA_DEV_VENV at the venv's python executable and run it directly:
