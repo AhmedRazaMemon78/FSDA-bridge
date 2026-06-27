@@ -178,3 +178,14 @@ julia code/mahalFS/check_mahalFS_jl.jl
   - **Project.toml committed** (`code/mahalFS/Project.toml`) pinning `PythonCall = "0.9"` — an
     environment manifest only (no package/build), so the Julia side is reproducible with
     `--project=code/mahalFS`.
+
+- 2026-06-27 - Cross-target import fix (PythonCall analogue of the spec-003 reticulate fix). Every FSDA
+  target's Layer-1 file is named `bridge.py`, and Python caches modules by bare name, so using `mahalFS`
+  and a second target (e.g. `Score`, spec 005) in the **same Julia session** made `pyimport("bridge")`
+  return the first-imported module, raising
+  `AttributeError: module 'bridge' has no attribute 'which_score'`. `start_bridge` now, before
+  `pyimport("bridge")`, runs `sys.modules.pop("bridge", nothing)` **and** forces `_BRIDGE_DIR` to the
+  front of `sys.path` (de-duping first) — the extra path step is needed because, unlike reticulate's
+  `import_from_path`, `pyimport` searches `sys.path` in order and does not restore it. Verified at the
+  import level without starting MATLAB: both load orders (mahalFS→Score and back) resolve to the correct
+  `code/<target>/bridge.py`. Agreement gate unchanged.

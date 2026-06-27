@@ -107,7 +107,6 @@
   `AttributeError: module 'bridge' has no attribute 'which_score'` until R restart. Both `bridge.R`
   files now call `sys.modules.pop('bridge', None)` just before `import_from_path`, loading each target's
   own `code/<target>/bridge.py` fresh (no restart, either order). Verified at the import level without
-  MATLAB. **Note (Julia):** the spec-002/005 PythonCall surfaces have the same latent `bridge` name, but
-  Julia is already single-target-per-session by design (the one-shot PythonCall binding + `const
-  _BRIDGE_DIR`), so the documented workflow is a fresh `julia` process per target; making Julia
-  multi-target in one session would require wrapping each `bridge.jl` in its own `module`.
+  MATLAB. **The Julia PythonCall surfaces (specs 002/005) hit the identical collision and are fixed the
+  same way** — see those specs' notes (Julia needs the extra step of forcing its dir to the front of
+  `sys.path`, since `pyimport` does not restore the path the way reticulate's `import_from_path` does).

@@ -152,3 +152,13 @@ julia --project=code\Score code\Score\check_Score_jl.jl
   - The max abs diff is **exactly 0**: the Julia surface drives the same `bridge.py`/FSDA call as the
     oracle, so it reproduces `Score_fsda` bit-for-bit (the numeric gap is the numpy-vs-FSDA gap, already
     `6e-13` and recorded in spec 004).
+
+- 2026-06-27 - Cross-target import fix (shared with spec 002). All targets' Layer-1 files are named
+  `bridge.py`; Python caches modules by bare name, so loading `mahalFS` and `Score` in one Julia session
+  returned the first-imported module and raised
+  `AttributeError: module 'bridge' has no attribute 'which_score'`. Both `bridge.jl` files now evict the
+  cached module (`sys.modules.pop("bridge", nothing)`) and force `_BRIDGE_DIR` to the front of
+  `sys.path` before `pyimport("bridge")`, so each target loads its own `code/<target>/bridge.py` fresh,
+  in either order. The path step is the one thing Julia needs beyond the R fix, because `pyimport` does
+  not restore `sys.path` the way reticulate's `import_from_path` does. Verified at the import level
+  without MATLAB; agreement gate unchanged.

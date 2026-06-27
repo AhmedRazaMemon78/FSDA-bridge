@@ -139,9 +139,18 @@ function start_bridge(; python::AbstractString = get(ENV, "FSDA_DEV_VENV", ""),
               bound = _PYTHON_EXE, requested = requested)
     end
 
+    # Python caches imported modules by their bare name, and every FSDA target's
+    # Layer-1 file is named bridge.py. Evict any 'bridge' cached by a different
+    # target (e.g. mahalFS) and force THIS target's dir to the front of sys.path,
+    # so code/Score/bridge.py is (re)loaded fresh. Without this, using two targets
+    # in one Julia session returns the first-imported module (AttributeError on the
+    # other target's helpers) — the PythonCall analogue of the reticulate fix.
     sys = pyimport("sys")
-    on_path = any(==(_BRIDGE_DIR), (pyconvert(String, p) for p in sys.path))
-    on_path || sys.path.insert(0, _BRIDGE_DIR)   # local bridge.py wins
+    sys.modules.pop("bridge", nothing)
+    while pyconvert(Bool, sys.path.__contains__(_BRIDGE_DIR))
+        sys.path.remove(_BRIDGE_DIR)   # drop stale duplicates of this dir
+    end
+    sys.path.insert(0, _BRIDGE_DIR)    # this target's bridge.py wins
     module_ = pyimport("bridge")
 
     engine = if fsda_root === nothing || isempty(String(fsda_root))
