@@ -100,3 +100,14 @@
     `bridge.which_score`) to avoid reticulate probing engine method signatures.
   - **One-time setup:** this machine had no `reticulate`; installed the CRAN binary
     (`install.packages("reticulate", lib="/Users/aldocorbellini/Rpackages")`) before the run.
+
+- 2026-06-27 - Cross-target import fix (shared with spec 003). All targets' Layer-1 files are named
+  `bridge.py`; Python caches modules by bare name, so loading `mahalFS` and `Score` in one R session
+  returned the first-imported module and raised
+  `AttributeError: module 'bridge' has no attribute 'which_score'` until R restart. Both `bridge.R`
+  files now call `sys.modules.pop('bridge', None)` just before `import_from_path`, loading each target's
+  own `code/<target>/bridge.py` fresh (no restart, either order). Verified at the import level without
+  MATLAB. **Note (Julia):** the spec-002/005 PythonCall surfaces have the same latent `bridge` name, but
+  Julia is already single-target-per-session by design (the one-shot PythonCall binding + `const
+  _BRIDGE_DIR`), so the documented workflow is a fresh `julia` process per target; making Julia
+  multi-target in one session would require wrapping each `bridge.jl` in its own `module`.

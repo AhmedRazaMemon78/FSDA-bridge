@@ -103,3 +103,12 @@
   machine-specific path is baked into the repo. README / CONSTITUTION / `check_mahalFS.py` docstring
   genericized to `FSDA_DEV_VENV`. Agreement gate unchanged; re-run `check_mahalFS_r.R` with
   `FSDA_DEV_VENV` set to confirm **PASS**.
+
+- 2026-06-27 - Cross-target import fix: every FSDA target's Layer-1 file is named `bridge.py`, and Python
+  caches modules by their bare name (`sys.modules['bridge']`). Using `mahalFS` then a second target
+  (e.g. `Score`, spec 006) in the **same R session** returned the first-imported module, raising
+  `AttributeError: module 'bridge' has no attribute 'which_score'` until R was restarted. `start_bridge`
+  now runs `sys.modules.pop('bridge', None)` immediately before `import_from_path`, so each target loads
+  its own `code/<target>/bridge.py` fresh — no restart needed, in either load order. Verified at the
+  import level (without starting MATLAB): the second target's module resolves to the correct file and
+  exposes its own helpers. Agreement gate unchanged.

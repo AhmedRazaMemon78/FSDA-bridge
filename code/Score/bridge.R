@@ -147,6 +147,12 @@ start_bridge = function(python = Sys.getenv("FSDA_DEV_VENV"), fsda_root = NULL) 
   python = .resolve_python(python)
   .configure_python(reticulate, python)
 
+  # Python caches imported modules by their bare name, and every FSDA target's
+  # Layer-1 file is named bridge.py. Evict any 'bridge' cached by a different
+  # target (e.g. mahalFS) so THIS target's code/Score/bridge.py is loaded fresh.
+  # Without this, using two targets in one R session returns the first-imported
+  # module (AttributeError on the other target's helpers) until R is restarted.
+  reticulate$py_run_string("import sys; sys.modules.pop('bridge', None)")
   module = reticulate$import_from_path("bridge", path = .bridge_dir, convert = TRUE)
   if (is.null(fsda_root) || !nzchar(fsda_root)) {
     engine = module$start_engine()
