@@ -1,9 +1,9 @@
 # fsda_python_porting_test
 
 A small **collaborative prototype** for calling [FSDA](https://github.com/UniprJRC/FSDA) (a MATLAB
-robust-statistics toolbox) from **Python** via the MATLAB Engine API — and, in later specs, from
-**Julia** and **R**. The goal is to learn how the bridge behaves on real routines, not to ship a
-package. Everything is local.
+robust-statistics toolbox) from **Python** via the MATLAB Engine API, with thin **Julia** (PythonCall)
+and **R** (reticulate) surfaces layered on top of the same Python bridge. The goal is to learn how the
+bridge behaves on real routines, not to ship a package. Everything is local.
 
 We work **spec-driven**: a shared `CONSTITUTION.md` fixes the rules common to all work, and each unit of
 work is one self-contained file under `specs/`. Different people use different agentic AI tools (Claude
@@ -62,6 +62,39 @@ export FSDA_DEV_VENV="/path/to/your/fsda_dev_env/bin/python"
 
 It starts a MATLAB engine, calls the genuine FSDA `mahalFS`, compares against a pure-numpy reference,
 and prints `PASS` when they agree to `< 1e-9`.
+
+## Language surfaces (Julia, R)
+
+The Python bridge (`code/mahalFS/bridge.py`) is reused **verbatim** under two Layer-2 surfaces, so each
+calls the genuine FSDA routine *through* it rather than re-implementing the marshalling:
+
+- **Julia → PythonCall → Python → matlab.engine → FSDA** (spec 002) — `code/mahalFS/bridge.jl`, check
+  `code/mahalFS/check_mahalFS_jl.jl`.
+- **R → reticulate → Python → matlab.engine → FSDA** (spec 003) — `code/mahalFS/bridge.R`, check
+  `code/mahalFS/check_mahalFS_r.R`.
+
+Both need the same MATLAB + FSDA + `matlabengine` venv as the Python quickstart; point `FSDA_DEV_VENV`
+at the venv's python (the resolution order is the same). Each check loads the spec-001 gold CSV
+(`reference/mahalFS_check.csv`) as the oracle and prints `PASS` when the surface agrees to `< 1e-9`.
+
+Run the **Julia** check (needs Julia with the `PythonCall` package):
+
+```powershell
+# Windows (PowerShell)
+julia --project=code\mahalFS -e 'import Pkg; Pkg.instantiate()'   # PythonCall, once
+$env:FSDA_DEV_VENV = (Get-Command python).Source
+julia --project=code\mahalFS code\mahalFS\check_mahalFS_jl.jl
+```
+
+```bash
+# macOS / Linux (bash)
+julia --project=code/mahalFS -e 'import Pkg; Pkg.instantiate()'   # PythonCall, once
+export FSDA_DEV_VENV="$(command -v python)"
+julia --project=code/mahalFS code/mahalFS/check_mahalFS_jl.jl
+```
+
+> PythonCall binds its interpreter once, at `using PythonCall`. `bridge.jl` pins it to the resolved
+> venv before that point, so to switch interpreters start a fresh `julia` process.
 
 ## How to work here
 
