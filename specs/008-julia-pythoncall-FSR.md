@@ -103,3 +103,8 @@ julia --project=code/FSR code/FSR/check_FSR_jl.jl
   captured MATLAB output to Python `sys.stdout`, which PythonCall surfaces on the Julia terminal.
   Verified headless (piped stdin): FSDA's signal-detection messages print, **PASS** (max abs diff
   `0.000e+00`, outliers [11, 20, 30, 34]), exit 0, no hang.
+
+- 2026-06-28 — Interactive pause hardened. Reading a key cannot work under PythonCall — the embedded
+  MATLAB engine hijacks Julia's stdin — so the check no longer uses `readline()`. It now calls
+  `wait_for_figures(bridge)` (MATLAB-side `uiwait`); the user **closes the figure window(s)** to finish,
+  gated on `stdin isa Base.TTY`. Verified non-hang in a no-tty environment (wait skipped, **PASS**).

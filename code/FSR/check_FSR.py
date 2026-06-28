@@ -160,11 +160,13 @@ def main() -> int:
             for i, o in enumerate(res["outliers"]):
                 w.writerow(["outlier", i, int(o)])
 
-        # Keep the engine alive so the figure window stays open; only block on an
-        # interactive terminal so piped / CI runs never hang.
+        # Keep the engine (and the figure windows) alive until the user closes
+        # them: blocking is driven MATLAB-side (uiwait), uniform with R/Julia where
+        # reading a key cannot work (the embedded engine hijacks stdin). Gated on
+        # an interactive terminal so piped / CI runs never hang.
         if PLOTS and sys.stdin.isatty():
-            bridge.render_figures(eng)
-            input("Press Enter to close the FSR figures and stop the engine...")
+            print("Close the FSR figure window(s) to stop the engine and finish...")
+            bridge.wait_for_figures(eng)
 
         return 0 if ok else 1
     finally:

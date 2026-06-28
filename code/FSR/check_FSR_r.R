@@ -62,6 +62,19 @@ MSG = 1    # FSR message level (1 routes MATLAB's progress messages to this cons
   M
 }
 
+.has_terminal = function() {
+  # Reliable interactive check under Rscript (isatty(stdin()) is not, and the
+  # embedded engine interferes with R's stdin so key-reading cannot work). Can we
+  # open the controlling terminal? TRUE in a real terminal, FALSE when piped / in
+  # CI / with no tty (and on Windows, where /dev/tty does not exist).
+  con = suppressWarnings(tryCatch(file("/dev/tty", open = "r"), error = function(e) NULL))
+  if (is.null(con)) {
+    return(FALSE)
+  }
+  close(con)
+  TRUE
+}
+
 .print_diagnostics = function(diagnostics) {
   cat("R            : ", diagnostics$r, "\n", sep = "")
   cat("reticulate   : ", diagnostics$reticulate, "\n", sep = "")
@@ -124,11 +137,13 @@ main = function() {
   cat("max abs diff : ", formatC(max_abs_diff, digits = 3, format = "e"), "  (tol 1e-09)\n", sep = "")
   cat("RESULT       : ", if (ok) "PASS" else "FAIL", "\n", sep = "")
 
-  # Keep the engine alive so the figure window stays open; only block on an
-  # interactive terminal so piped / CI runs never hang (on.exit quits the engine).
-  if (PLOTS != 0 && isatty(stdin())) {
-    render_figures(bridge)
-    invisible(readline("Press Enter to close the FSR figures and stop the engine..."))
+  # Keep the engine (and the figure windows) alive until the user closes them
+  # (on.exit then quits the engine). Blocking is driven MATLAB-side (uiwait):
+  # reading a key in R does not work because the embedded Python/MATLAB engine
+  # hijacks R's stdin. Gated on a real controlling terminal so piped / CI never hangs.
+  if (PLOTS != 0 && .has_terminal()) {
+    cat("Close the FSR figure window(s) to stop the engine and finish...\n")
+    wait_for_figures(bridge)
   }
 
   if (ok) 0 else 1

@@ -109,12 +109,13 @@ function main()
         println("max abs diff : ", @sprintf("%.3e", max_abs_diff), "  (tol 1e-09)")
         println("RESULT       : ", ok ? "PASS" : "FAIL")
 
-        # Keep the engine alive so the figure window stays open; only block on an
+        # Keep the engine (and the figure windows) alive until the user closes
+        # them: blocking is driven MATLAB-side (uiwait), since reading a key from
+        # Julia cannot work once the engine is embedded via PythonCall. Gated on an
         # interactive terminal so piped / CI runs never hang.
         if PLOTS != 0 && stdin isa Base.TTY
-            render_figures(bridge)
-            print("Press Enter to close the FSR figures and stop the engine...")
-            readline()
+            println("Close the FSR figure window(s) to stop the engine and finish...")
+            wait_for_figures(bridge)
         end
 
         return ok ? 0 : 1

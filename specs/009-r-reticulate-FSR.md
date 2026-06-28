@@ -93,3 +93,21 @@
   writes the captured MATLAB output to Python `sys.stdout`, which reticulate forwards to the R console.
   Verified headless (piped stdin): FSDA's messages print, **PASS** (max abs diff `0.000e+00`, outliers
   11 20 30 34), exit 0, no hang.
+
+- 2026-06-28 — R pause fix (figures were closing immediately in a terminal). The 06-27 pause used
+  `readline()` guarded by `isatty(stdin())`, but under **Rscript** `readline()` does not block and
+  `stdin()` / `isatty(stdin())` refer to the (empty) R console, not the controlling terminal — so the
+  block effectively no-op'd and `on.exit(stop_bridge)` closed the figure window at once. `check_FSR_r.R`
+  now pauses via a `.wait_for_enter` helper that reads one line from `file("stdin")` (the process's real
+  fd 0): it **blocks for Enter on a terminal** and **returns immediately at EOF** (piped / CI), so it
+  never hangs. Guard simplified to `if (PLOTS != 0)`. Verified non-hang with stdin = /dev/null and a
+  piped newline (both **PASS**, exit 0). Python (`input()` + `sys.stdin.isatty()`) and Julia
+  (`readline()` + `stdin isa Base.TTY`) block correctly as-is and were left unchanged.
+
+- 2026-06-28 — Pause fix superseded (the `file("stdin")` read also failed: pressing Enter did nothing).
+  Root cause: the embedded Python/MATLAB engine **hijacks R's stdin**, so no key-reading in R works.
+  Final fix: block **MATLAB-side** via `wait_for_figures(bridge)` (`uiwait` until the figure windows are
+  closed) — the user **closes the window(s)** to finish — gated on a real controlling terminal detected
+  by opening `/dev/tty` (`.has_terminal`), which is reliable where `isatty(stdin())` is not. `.wait_for_enter`
+  removed. Verified non-hang in this no-tty environment (wait skipped, **PASS**). The same `uiwait`
+  mechanism is now used by Python and Julia (specs 007 / 008), so all three behave identically.

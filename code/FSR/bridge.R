@@ -186,10 +186,19 @@ fsr = function(bridge, y, X, nsamp = 0, intercept = TRUE, plots = 0, msg = 0,
 }
 
 render_figures = function(bridge) {
-  # Force any open MATLAB figures (from fsr(plots=...)) to paint. Figures close
-  # when the engine quits, so keep the bridge alive until you have viewed them.
+  # Force any open MATLAB figures (from fsr(plots=...)) to paint.
   .validate_bridge(bridge)
   bridge$module$render_figures(bridge$engine)
+  invisible(NULL)
+}
+
+wait_for_figures = function(bridge) {
+  # Block until the user closes all open MATLAB figures. Driven MATLAB-side
+  # (uiwait), so it is immune to the terminal-stdin interference that makes
+  # reading a key in R fail once the engine is embedded via reticulate. Returns
+  # at once if no figures are open.
+  .validate_bridge(bridge)
+  bridge$module$wait_for_figures(bridge$engine)
   invisible(NULL)
 }
 

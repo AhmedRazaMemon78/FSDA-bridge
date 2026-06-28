@@ -99,3 +99,10 @@ p=2 → C(47,2)=1081) for that to be instant. FSR also defaults to `plots=1`; th
   figure, while the agreement gate is unchanged (**PASS**, max abs diff `0.000e+00`, outliers
   [11, 20, 30, 34]). R/Julia surfaces are unchanged (their `fsr` wrappers don't forward `plots`/`msg`);
   wiring those through is a possible follow-up.
+
+- 2026-06-28 — R/Julia parity + robust interactive pause. `plots`/`msg` are now forwarded by the Julia
+  and R `fsr` wrappers too (specs 008 / 009). The keep-alive is now driven **MATLAB-side** via
+  `bridge.wait_for_figures` (`uiwait` until the figure windows are closed) instead of a terminal
+  keypress: when the engine is embedded (reticulate / PythonCall) it hijacks the host process's stdin,
+  so `input()` / `readline()` cannot catch a key in R/Julia. The user now **closes the figure window(s)**
+  to finish; still gated on an interactive terminal so piped / CI never hangs. Agreement gate unchanged.

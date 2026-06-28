@@ -198,6 +198,20 @@ function render_figures(bridge)
 end
 
 """
+    wait_for_figures(bridge)
+
+Block until the user closes all open MATLAB figures. Driven MATLAB-side (`uiwait`),
+so it is immune to the terminal-stdin interference under PythonCall (reading a key
+from Julia does not work once the engine is embedded). Returns at once if no
+figures are open.
+"""
+function wait_for_figures(bridge)
+    _validate_bridge(bridge)
+    bridge.module_.wait_for_figures(bridge.engine)
+    return nothing
+end
+
+"""
     stop_bridge(bridge)
 
 Quit the MATLAB engine (startup is expensive, so callers control shutdown).

@@ -158,13 +158,27 @@ def fsr(
 
 
 def render_figures(eng) -> None:
-    """Force any open MATLAB figures (e.g. from fsr(plots=...)) to paint.
-
-    Figures live in the engine process and close when it quits, so call this and
-    then keep the engine alive (e.g. block on input()) before stop_engine to view
-    FSR's plots.
-    """
+    """Force any open MATLAB figures (e.g. from fsr(plots=...)) to paint."""
     eng.eval("drawnow", nargout=0)
+
+
+def wait_for_figures(eng) -> None:
+    """Block until the user closes all open MATLAB figures.
+
+    fsr(plots=...) opens figure windows that live in the engine and would vanish
+    when it quits. This holds the engine (and the windows) open until the user
+    dismisses them by *closing the window(s)*. It is driven entirely MATLAB-side
+    (uiwait), so it is immune to the terminal-stdin interference seen when the
+    engine is embedded via reticulate / PythonCall (there, reading a key from R or
+    Julia does not work). Returns immediately if no figures are open.
+    """
+    eng.eval(
+        "drawnow; "
+        "fh = findall(groot, 'Type', 'figure'); "
+        "while ~isempty(fh); uiwait(fh(1)); "
+        "fh = findall(groot, 'Type', 'figure'); end",
+        nargout=0,
+    )
 
 
 def stop_engine(eng) -> None:
