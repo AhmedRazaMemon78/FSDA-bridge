@@ -175,10 +175,10 @@ def case_fsr(eng: FsdaEngine) -> dict:
                            "code/FSR/check_FSR.py")
     y = stars[:, -1].reshape(-1, 1)
     X = stars[:, :-1]
-    # FSDA's own 'msg' defaults ON; silence it via `options` (its name collides with
-    # call's stdout-capture flag, so it cannot be passed as a plain kwarg). plots=0
-    # has no such collision, so it goes as an ordinary name/value kwarg.
-    out = eng.call("FSR", y, X, nsamp=0, intercept=True, plots=1, options={"msg": 0})
+    # FSDA's own 'msg' defaults ON; silence it by forwarding msg=0. Both 'msg' and
+    # 'plots' are ordinary FSDA name/value options -- they pass straight through as
+    # kwargs (the bridge's own stdout tee is the separate `echo_output` flag).
+    out = eng.call("FSR", y, X, nsamp=0, intercept=True, plots=1, msg=0)
     cls = out.get("class")
     mdr = np.asarray(out["mdr"], dtype=float)
     tail = mdr[-TAIL:]
@@ -198,7 +198,7 @@ def case_fsraddt(eng: FsdaEngine) -> dict:
                            "code/FSRaddt/check_FSRaddt.py")
     y = wool[:, -1].reshape(-1, 1)
     X = wool[:, :-1]
-    out = eng.call("FSRaddt", y, X, nsamp=0, intercept=True, plots=0, options={"msg": 0})
+    out = eng.call("FSRaddt", y, X, nsamp=0, intercept=True, plots=0, msg=0)
     tdel = np.asarray(out["Tdel"], dtype=float)
     tail = tdel[-ADDT_TAIL:]
     gtail = gold[-ADDT_TAIL:]

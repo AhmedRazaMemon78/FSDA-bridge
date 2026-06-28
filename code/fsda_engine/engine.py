@@ -45,10 +45,13 @@ import matlab
 import matlab.engine
 
 # call() reserves these keyword names for its own control; every OTHER keyword is
-# forwarded to MATLAB as a name/value pair. To pass an FSDA option whose name
-# collides with one of these (e.g. FSR's own 'msg'), use the `options` dict:
-#     eng.call("FSR", y, X, options={"msg": 1})
-_RESERVED_CALL_KWARGS = ("nargout", "msg", "options")
+# forwarded to MATLAB as a name/value pair. Notably `msg` is NOT reserved -- it
+# passes straight through to FSDA (FSR/FSRaddt/getYahoo each have their own `msg`
+# option). The bridge's stdout/stderr tee is `echo_output`, deliberately named so
+# it cannot collide with an FSDA option. The rare case where an FSDA option's name
+# does collide with one of these reserved words is handled via the `options` dict:
+#     eng.call("FSR", y, X, options={"nargout": ...})
+_RESERVED_CALL_KWARGS = ("nargout", "echo_output", "options")
 
 
 def to_matlab(x):
@@ -137,20 +140,23 @@ class FsdaEngine:
         self.eng.quit()
 
     # --- the generic call ----------------------------------------------------
-    def call(self, name: str, *args, nargout: int = 1, msg: bool = False,
+    def call(self, name: str, *args, nargout: int = 1, echo_output: bool = False,
              options: dict | None = None, **kwargs):
         """Call FSDA function `name` generically and return plain Python.
 
         Positional `args` are marshalled with `to_matlab` and passed in order.
         Keyword args (and any `options` dict) become MATLAB name/value pairs, in
         the given order -- e.g. ``call("Score", y, X, la=la, intercept=True)``
-        sends ``Score(y, X, 'la', la, 'intercept', true)``.
+        sends ``Score(y, X, 'la', la, 'intercept', true)``. FSDA's own ``msg``
+        option is just such a kwarg -- ``call("FSR", y, X, msg=0)`` forwards it to
+        MATLAB (it is NOT consumed by the bridge).
 
-        nargout : number of outputs to request (default 1).
-        msg     : when True, route MATLAB's stdout/stderr to this terminal (the
-                  engine needs io.StringIO buffers, so capture then echo). This is
-                  the call's OWN control flag; to pass an FSDA option literally
-                  named 'msg' (as FSR/FSRaddt have), put it in `options`.
+        nargout     : number of outputs to request (default 1).
+        echo_output : when True, route MATLAB's stdout/stderr to this terminal (the
+                      engine needs io.StringIO buffers, so capture then echo). This
+                      is the bridge's OWN tee, named so it cannot clash with an FSDA
+                      option; it does not change what FSDA prints, only whether an
+                      embedded host (reticulate / PythonCall) surfaces it.
         """
         margs = [to_matlab(a) for a in args]
         pairs = dict(options or {})
@@ -160,7 +166,7 @@ class FsdaEngine:
             margs.append(to_matlab(value))
 
         fn = getattr(self.eng, name)
-        if msg:
+        if echo_output:
             out_buf, err_buf = io.StringIO(), io.StringIO()
             raw = fn(*margs, nargout=nargout, stdout=out_buf, stderr=err_buf)
             if out_buf.getvalue():

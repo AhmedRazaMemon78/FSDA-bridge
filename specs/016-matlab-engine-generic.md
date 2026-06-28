@@ -56,10 +56,10 @@
   - Output: MATLAB's natural shape, **no silent reshape** (column stays `(n,1)`).
   - Input: 1-D → MATLAB **row**; pass `(n,1)` for a column (e.g. `y` for Score /
     FSR / FSRaddt). NaN/Inf preserved; indices stay 1-based.
-  - `call` reserves the keyword names `nargout` / `msg` / `options`. An FSDA option
-    literally named `msg` (FSR/FSRaddt) must be passed via `options={"msg": ...}`,
-    else it binds the call's own stdout-capture flag. The four-case gate runs
-    headless, relying on FSR/FSRaddt `plots`/`msg` defaulting to off.
+  - `call` reserves only `nargout` / `echo_output` / `options`. FSDA's own `msg`
+    option is **not** reserved — `call("FSR", ..., msg=0)` forwards it to MATLAB
+    like any other name/value pair (the bridge's stdout/stderr tee is the separate
+    `echo_output` flag). The gate silences FSDA's default-on messaging with `msg=0`.
 - **Reference oracle:** inline numpy for `mahalFS` and `Score`; committed gold
   `code/FSR/reference/FSR_mdr.csv` and `code/FSRaddt/reference/FSRaddt_Tdel.csv`
   read **read-only**. Fixtures (`stars.csv`, `wool.csv`) read from the existing
@@ -85,8 +85,10 @@
 - The four "well-behaved" crossings (numeric / struct / nested struct / char) need
   **zero per-routine code** — generic `to_matlab` / `from_matlab` + a name/value
   `call` cover them. mahalFS, Score, FSR, FSRaddt all run with no wrapper.
-- **`msg` name collision is real:** FSDA's own `msg` option defaults ON and clashes
-  with `call`'s stdout-capture flag. Passing it as a kwarg silences the wrong thing;
-  it must go through `options={"msg": 0}`. The gate now does this (and runs quiet).
+- **FSDA's `msg` option prevails as a plain kwarg.** It defaults ON; the bridge's
+  own stdout-capture flag was originally also named `msg`, which shadowed it. Fixed
+  by renaming that flag to `echo_output`, so `call("FSR", ..., msg=0)` forwards
+  `msg` to FSDA directly (gate runs quiet). Only `nargout`/`echo_output`/`options`
+  are reserved now.
 - The `1-D → MATLAB row` input convention means a column response must be passed as
   `(n,1)` (e.g. `y.reshape(-1,1)` for Score/FSR/FSRaddt) — the gate relies on it.
