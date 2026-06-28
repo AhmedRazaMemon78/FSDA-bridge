@@ -1,0 +1,10 @@
+# Minimal Julia environment for the spec-014 Julia surface. PythonCall is the
+# only Julia dependency (it bridges into the Python Layer-1 bridge.py). This is
+# an environment manifest, not a package — no src/, no build. Use it with:
+#     julia --project=code/getYahoo -e 'import Pkg; Pkg.instantiate()'
+#     julia --project=code/getYahoo code/getYahoo/check_getYahoo_jl.jl
+[deps]
+PythonCall = "6099a3de-0909-46bc-b1f4-468b9a2dfc0d"
+
+[compat]
+PythonCall = "0.9"

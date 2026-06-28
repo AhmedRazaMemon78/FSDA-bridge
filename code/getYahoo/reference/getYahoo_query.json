@@ -1,0 +1,10 @@
+{
+  "tickers": [
+    "G.MI",
+    "ENEL.MI"
+  ],
+  "t0": "23-Jun-2026 09:00:00",
+  "t1": "23-Jun-2026 09:00:01",
+  "last_period": null,
+  "interval": null
+}
