@@ -85,5 +85,17 @@ p=2 → C(47,2)=1081) for that to be instant. FSR also defaults to `plots=1`; th
   - **1-based indices preserved** end-to-end; R and Julia are natively 1-based, so the outlier list is
     already correct there with no decrement.
   - **Two reference files of different cardinality**: `stars.csv` (47-row fixture) and `FSR_mdr.csv`
-    (40-row trajectory); the gate is the last 5 rows of the latter. `nsamp=0` + `plots=0`/`msg=0` are
-    mandatory for a deterministic, headless run.
+    (40-row trajectory); the gate is the last 5 rows of the latter. `nsamp=0` keeps the run
+    deterministic.
+
+- 2026-06-27 — Plots/messages made viewable. `plots`/`msg` are now real `fsr()` parameters (default
+  **0**, so the gate and any library use stay headless and deterministic — they don't affect `mdr`).
+  Two MATLAB-Engine gotchas handled: (1) figure windows close when the engine quits, so `check_FSR.py`
+  now keeps the engine alive in a `try/finally` and, on an interactive TTY (`sys.stdin.isatty()`),
+  renders (`bridge.render_figures`) and pauses (`input(...)`) before `stop_engine` — a piped/CI run skips
+  the pause and never hangs; (2) the engine requires `stdout`/`stderr` to be `io.StringIO` (not
+  `sys.stdout`), so `fsr(..., msg=1)` captures into a buffer and echoes it to the terminal. Verified:
+  with `PLOTS=MSG=1` the check prints FSDA's signal-detection messages and (on a terminal) opens the mdr
+  figure, while the agreement gate is unchanged (**PASS**, max abs diff `0.000e+00`, outliers
+  [11, 20, 30, 34]). R/Julia surfaces are unchanged (their `fsr` wrappers don't forward `plots`/`msg`);
+  wiring those through is a possible follow-up.

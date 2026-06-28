@@ -21,12 +21,16 @@ Three things make FSR a richer crossing than mahalFS/Score (see CONSTITUTION §4
     language surface converts if it ever needs 0-based) and shaped inconsistently
     by MATLAB -- a scalar when one outlier, an array when several, empty when none;
   * randomness from `nsamp` subsampling -- `nsamp=0` enumerates ALL C(n,p) subsets,
-    making the run deterministic with no RNG seeding. Plots/messages are forced off
-    so nothing pops a figure or writes to stdout through the headless engine.
+    making the run deterministic with no RNG seeding. `plots`/`msg` default to off
+    (headless gate); set them to view FSR's figures as live MATLAB windows and have
+    its messages routed to the terminal (see `fsr` and `render_figures`).
 
 See spec 007 (specs/007-matlab-engine-FSR.md) and CONSTITUTION.md.
 """
 from __future__ import annotations
+
+import io
+import sys
 
 import numpy as np
 import matlab
@@ -71,6 +75,8 @@ def fsr(
     X: np.ndarray,
     nsamp: int = 0,
     intercept: bool = True,
+    plots: int = 0,
+    msg: int = 0,
     h: int | None = None,
     init: int | None = None,
     bonflev: float | None = None,
@@ -81,12 +87,17 @@ def fsr(
     X         : (n, p-1) predictor matrix (intercept added by FSDA when intercept=True)
     nsamp     : subsamples for the LXS initial subset; 0 = ALL subsets (deterministic)
     intercept : include a constant term (default True)
+    plots     : FSR plot level (0 none, 1 mdr plot, 2 intermediate); default 0
+    msg       : FSR message level; when truthy, MATLAB's text output is routed to
+                the terminal (engine stdout/stderr). Default 0.
     h/init/bonflev : optional FSR knobs (passed through only when not None)
     returns   : dict with mdr (m,2), outliers (1-based int array, empty if none),
                 beta (p,), scale (float), fittedvalues (n,), residuals (n,), class (str).
 
-    `plots` and `msg` are always forced to 0 (headless engine). Every value is
-    shape-checked at the boundary; no silent reshape.
+    `plots`/`msg` default to 0 so the agreement gate stays headless. When `plots`
+    is on, FSR opens live MATLAB figure windows -- they close when the engine
+    quits, so don't `stop_engine` until you have viewed them (see `render_figures`).
+    Every value is shape-checked at the boundary; no silent reshape.
     """
     y = np.asarray(y, dtype=float)
     X = np.asarray(X, dtype=float)
@@ -108,8 +119,8 @@ def fsr(
     args = [ym, Xm,
             "nsamp", float(nsamp),
             "intercept", bool(intercept),
-            "plots", 0.0,
-            "msg", 0.0]
+            "plots", float(plots),
+            "msg", float(msg)]
     if h is not None:
         args += ["h", float(h)]
     if init is not None:
@@ -117,7 +128,19 @@ def fsr(
     if bonflev is not None:
         args += ["bonflev", float(bonflev)]
 
-    out = eng.FSR(*args, nargout=1)   # MATLAB struct -> Python dict
+    if msg:
+        # Surface FSR's MATLAB-side messages. The engine requires io.StringIO
+        # buffers (not sys.stdout directly), so capture then echo to the terminal.
+        out_buf, err_buf = io.StringIO(), io.StringIO()
+        out = eng.FSR(*args, nargout=1, stdout=out_buf, stderr=err_buf)
+        if out_buf.getvalue():
+            sys.stdout.write(out_buf.getvalue())
+            sys.stdout.flush()   # so embedded interpreters (reticulate/PythonCall) surface it
+        if err_buf.getvalue():
+            sys.stderr.write(err_buf.getvalue())
+            sys.stderr.flush()
+    else:
+        out = eng.FSR(*args, nargout=1)   # MATLAB struct -> Python dict
 
     mdr = np.asarray(out["mdr"], dtype=float)
     if mdr.ndim != 2 or mdr.shape[1] != 2:
@@ -132,6 +155,16 @@ def fsr(
         "residuals": np.asarray(out["residuals"], dtype=float).reshape(-1),
         "class": str(out["class"]),
     }
+
+
+def render_figures(eng) -> None:
+    """Force any open MATLAB figures (e.g. from fsr(plots=...)) to paint.
+
+    Figures live in the engine process and close when it quits, so call this and
+    then keep the engine alive (e.g. block on input()) before stop_engine to view
+    FSR's plots.
+    """
+    eng.eval("drawnow", nargout=0)
 
 
 def stop_engine(eng) -> None:

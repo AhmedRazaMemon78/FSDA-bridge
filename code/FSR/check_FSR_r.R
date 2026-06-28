@@ -2,6 +2,8 @@
 # the Python/FSDA out.mdr golden from spec 007 to this absolute tolerance.
 TOL = 1e-9
 TAIL = 5   # the gate compares the last TAIL rows of out.mdr
+PLOTS = 1  # FSR plot level (0 headless; 1 shows the mdr figure window)
+MSG = 1    # FSR message level (1 routes MATLAB's progress messages to this console)
 
 .script_dir = function() {
   # Support both Rscript and source() from an interactive session launched at
@@ -84,7 +86,7 @@ main = function() {
   on.exit(try(stop_bridge(bridge), silent = TRUE), add = TRUE)
 
   diagnostics = bridge_diagnostics(bridge)
-  res = fsr(bridge, stars$y, stars$X, nsamp = 0, intercept = TRUE)
+  res = fsr(bridge, stars$y, stars$X, nsamp = 0, intercept = TRUE, plots = PLOTS, msg = MSG)
 
   mdr = res$mdr
   if (nrow(mdr) < TAIL || nrow(golden) < TAIL) {
@@ -121,6 +123,13 @@ main = function() {
   }
   cat("max abs diff : ", formatC(max_abs_diff, digits = 3, format = "e"), "  (tol 1e-09)\n", sep = "")
   cat("RESULT       : ", if (ok) "PASS" else "FAIL", "\n", sep = "")
+
+  # Keep the engine alive so the figure window stays open; only block on an
+  # interactive terminal so piped / CI runs never hang (on.exit quits the engine).
+  if (PLOTS != 0 && isatty(stdin())) {
+    render_figures(bridge)
+    invisible(readline("Press Enter to close the FSR figures and stop the engine..."))
+  }
 
   if (ok) 0 else 1
 }

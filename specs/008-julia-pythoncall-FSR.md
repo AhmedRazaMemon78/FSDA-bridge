@@ -95,3 +95,11 @@ julia --project=code/FSR code/FSR/check_FSR_jl.jl
   - **Cross-target fix baked in from the start** (FSR is the 4th `bridge.py`): `start_bridge` evicts the
     cached module and prepends `code/FSR` to `sys.path` before `pyimport`, so FSR coexists with mahalFS /
     Score in one Julia session.
+
+- 2026-06-27 — Plots/messages enabled (parity with spec 007). `fsr(...; plots=0, msg=0)` now forwards
+  both to `bridge.py`, and `render_figures(bridge)` (→ Python `bridge.render_figures`) was added.
+  `check_FSR_jl.jl` sets `PLOTS=MSG=1`, and before `stop_bridge` (in `finally`) it renders + `readline()`
+  pauses **only when `stdin isa Base.TTY`**, so piped/CI runs never hang. Messages: `bridge.py` writes the
+  captured MATLAB output to Python `sys.stdout`, which PythonCall surfaces on the Julia terminal.
+  Verified headless (piped stdin): FSDA's signal-detection messages print, **PASS** (max abs diff
+  `0.000e+00`, outliers [11, 20, 30, 34]), exit 0, no hang.

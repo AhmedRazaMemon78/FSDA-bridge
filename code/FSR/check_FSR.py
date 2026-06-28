@@ -33,6 +33,8 @@ import bridge
 
 TOL = 1e-9
 TAIL = 5   # the gate compares the last TAIL rows of out.mdr
+PLOTS = 1  # FSR plot level (0 headless; 1 shows the mdr figure window)
+MSG = 1    # FSR message level (1 routes MATLAB's progress messages to the terminal)
 
 # Load the genuine FSDA stars data, accepting either stars.txt (ASCII matrix) or
 # stars.mat (a variable / table), leaving the result in MATLAB variable XX.
@@ -111,51 +113,62 @@ def main() -> int:
     fsda_root = sys.argv[1] if len(sys.argv) > 1 else None
 
     eng = bridge.start_engine(fsda_root=fsda_root)
-    matlab_version = eng.version()
-    where = eng.which("FSR")
+    try:
+        matlab_version = eng.version()
+        where = eng.which("FSR")
 
-    XX = load_stars_fixture(eng, reference_dir)
-    y = XX[:, -1]
-    X = XX[:, :-1]
+        XX = load_stars_fixture(eng, reference_dir)
+        y = XX[:, -1]
+        X = XX[:, :-1]
 
-    res = bridge.fsr(eng, y, X, nsamp=0, intercept=True)
-    bridge.stop_engine(eng)
+        # plots/msg are driven by the module constants; with MSG on, FSR's progress
+        # messages are routed to this terminal, and with PLOTS on it opens a live
+        # MATLAB figure window (kept open by the pause below).
+        res = bridge.fsr(eng, y, X, nsamp=0, intercept=True, plots=PLOTS, msg=MSG)
 
-    mdr = res["mdr"]
-    golden, bootstrapped = load_or_write_golden(reference_dir, mdr)
+        mdr = res["mdr"]
+        golden, bootstrapped = load_or_write_golden(reference_dir, mdr)
 
-    tail = mdr[-TAIL:]
-    gtail = golden[-TAIL:]
-    same_shape = tail.shape == gtail.shape
-    max_abs_diff = float(np.max(np.abs(tail - gtail))) if same_shape else float("inf")
-    ok = same_shape and bool(np.allclose(tail, gtail, rtol=0.0, atol=TOL))
+        tail = mdr[-TAIL:]
+        gtail = golden[-TAIL:]
+        same_shape = tail.shape == gtail.shape
+        max_abs_diff = float(np.max(np.abs(tail - gtail))) if same_shape else float("inf")
+        ok = same_shape and bool(np.allclose(tail, gtail, rtol=0.0, atol=TOL))
 
-    print("=== spec 007: FSR bridge agreement check ===")
-    print(f"Python       : {platform.python_version()}")
-    print(f"MATLAB       : {matlab_version}")
-    print(f"engine pkg   : {engine_pkg_version()}")
-    print(f"FSR path     : {where}")
-    print(f"fixture      : stars (n={XX.shape[0]}, p={XX.shape[1] - 1}+intercept), nsamp=0")
-    print(f"outliers(1-b): {res['outliers'].tolist()}")
-    print(f"mdr last {TAIL} rows (step, mdr):")
-    for step, val in tail:
-        print(f"   {int(step):3d}  {val:.10f}")
-    if bootstrapped:
-        print("golden       : bootstrapped reference/FSR_mdr.csv (first run)")
-    print(f"max abs diff : {max_abs_diff:.3e}  (tol {TOL:.0e})")
-    print(f"RESULT       : {'PASS' if ok else 'FAIL'}")
+        print("=== spec 007: FSR bridge agreement check ===")
+        print(f"Python       : {platform.python_version()}")
+        print(f"MATLAB       : {matlab_version}")
+        print(f"engine pkg   : {engine_pkg_version()}")
+        print(f"FSR path     : {where}")
+        print(f"fixture      : stars (n={XX.shape[0]}, p={XX.shape[1] - 1}+intercept), nsamp=0")
+        print(f"outliers(1-b): {res['outliers'].tolist()}")
+        print(f"mdr last {TAIL} rows (step, mdr):")
+        for step, val in tail:
+            print(f"   {int(step):3d}  {val:.10f}")
+        if bootstrapped:
+            print("golden       : bootstrapped reference/FSR_mdr.csv (first run)")
+        print(f"max abs diff : {max_abs_diff:.3e}  (tol {TOL:.0e})")
+        print(f"RESULT       : {'PASS' if ok else 'FAIL'}")
 
-    # transparency artifact: outliers + beta + scale (long format, language-neutral)
-    with open(reference_dir / "FSR_check.csv", "w", newline="") as f:
-        w = csv.writer(f)
-        w.writerow(["field", "index", "value"])
-        for i, b in enumerate(res["beta"]):
-            w.writerow(["beta", i, b])
-        w.writerow(["scale", 0, res["scale"]])
-        for i, o in enumerate(res["outliers"]):
-            w.writerow(["outlier", i, int(o)])
+        # transparency artifact: outliers + beta + scale (long format, language-neutral)
+        with open(reference_dir / "FSR_check.csv", "w", newline="") as f:
+            w = csv.writer(f)
+            w.writerow(["field", "index", "value"])
+            for i, b in enumerate(res["beta"]):
+                w.writerow(["beta", i, b])
+            w.writerow(["scale", 0, res["scale"]])
+            for i, o in enumerate(res["outliers"]):
+                w.writerow(["outlier", i, int(o)])
 
-    return 0 if ok else 1
+        # Keep the engine alive so the figure window stays open; only block on an
+        # interactive terminal so piped / CI runs never hang.
+        if PLOTS and sys.stdin.isatty():
+            bridge.render_figures(eng)
+            input("Press Enter to close the FSR figures and stop the engine...")
+
+        return 0 if ok else 1
+    finally:
+        bridge.stop_engine(eng)
 
 
 if __name__ == "__main__":

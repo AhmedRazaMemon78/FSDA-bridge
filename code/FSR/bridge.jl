@@ -150,24 +150,27 @@ function start_bridge(; python::AbstractString = get(ENV, "FSDA_DEV_VENV", ""),
 end
 
 """
-    fsr(bridge, y, X; nsamp=0, intercept=true, h=nothing, init=nothing, bonflev=nothing)
-        -> NamedTuple
+    fsr(bridge, y, X; nsamp=0, intercept=true, plots=0, msg=0,
+        h=nothing, init=nothing, bonflev=nothing) -> NamedTuple
 
 Run FSDA `FSR` through the Python bridge and return the key fields converted to
 Julia: `mdr` (m×2 `Matrix{Float64}` of [step, min deletion residual]), `outliers`
 (1-based `Vector{Int}`, empty if none), `beta` (`Vector{Float64}`), `scale`
-(`Float64`). `nsamp=0` enumerates all subsets (deterministic); plots/messages are
-forced off inside `bridge.py`.
+(`Float64`). `nsamp=0` enumerates all subsets (deterministic). `plots`/`msg`
+default to off; set them to open live MATLAB figure windows (keep the bridge
+alive — see `render_figures`) and route FSR's messages to this terminal.
 """
 function fsr(bridge, y, X; nsamp::Integer = 0, intercept::Bool = true,
+             plots::Integer = 0, msg::Integer = 0,
              h = nothing, init = nothing, bonflev = nothing)
     _validate_bridge(bridge)
     inp = _validate_inputs(y, X)
     # PythonCall passes the Julia vector/matrix to Python keeping their logical
-    # shape; bridge.py's guards (shapes, plots=0/msg=0, struct-field reads,
-    # 1-based outlier normalization) are authoritative. nothing -> Python None.
+    # shape; bridge.py's guards (shapes, struct-field reads, 1-based outlier
+    # normalization) and its plots/msg handling are authoritative. nothing -> None.
     res = bridge.module_.fsr(bridge.engine, inp.y, inp.X;
                              nsamp = nsamp, intercept = intercept,
+                             plots = plots, msg = msg,
                              h = h, init = init, bonflev = bonflev)
     # PythonCall does NOT auto-convert; convert each field explicitly. No reshape.
     mdr = pyconvert(Matrix{Float64}, res["mdr"])
@@ -179,6 +182,19 @@ function fsr(bridge, y, X; nsamp::Integer = 0, intercept::Bool = true,
         beta = pyconvert(Vector{Float64}, res["beta"]),
         scale = pyconvert(Float64, res["scale"]),
     )
+end
+
+"""
+    render_figures(bridge)
+
+Force any open MATLAB figures (from `fsr(...; plots=…)`) to paint. Figures close
+when the engine quits, so keep the bridge alive (don't `stop_bridge`) until you
+have viewed them.
+"""
+function render_figures(bridge)
+    _validate_bridge(bridge)
+    bridge.module_.render_figures(bridge.engine)
+    return nothing
 end
 
 """

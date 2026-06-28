@@ -85,3 +85,11 @@
   - **Cross-target fix baked in from the start** (FSR is the 4th `bridge.py`): `start_bridge` runs
     `sys.modules.pop('bridge', None)` before `import_from_path`, so FSR coexists with mahalFS / Score in
     one R session without the `AttributeError` cache trap.
+
+- 2026-06-27 — Plots/messages enabled (parity with spec 007). `fsr(..., plots=0, msg=0)` now forwards
+  both to `bridge.py`, and `render_figures(bridge)` (→ Python `bridge.render_figures`) was added.
+  `check_FSR_r.R` sets `PLOTS=MSG=1`, and before the engine is quit (via `on.exit`) it renders +
+  `readline()` pauses **only when `isatty(stdin())`**, so piped/CI runs never hang. Messages: `bridge.py`
+  writes the captured MATLAB output to Python `sys.stdout`, which reticulate forwards to the R console.
+  Verified headless (piped stdin): FSDA's messages print, **PASS** (max abs diff `0.000e+00`, outliers
+  11 20 30 34), exit 0, no hang.

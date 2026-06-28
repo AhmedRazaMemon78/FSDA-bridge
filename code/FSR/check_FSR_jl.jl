@@ -18,6 +18,8 @@ using Printf
 
 const TOL = 1e-9
 const TAIL = 5   # the gate compares the last TAIL rows of out.mdr
+const PLOTS = 1  # FSR plot level (0 headless; 1 shows the mdr figure window)
+const MSG = 1    # FSR message level (1 routes MATLAB's progress messages here)
 
 function load_stars(path)
     # Genuine FSDA stars fixture persisted by check_FSR.py (last column = y).
@@ -83,7 +85,7 @@ function main()
     bridge = start_bridge(fsda_root = fsda_root)
     try
         diagnostics = bridge_diagnostics(bridge)
-        res = fsr(bridge, y, X; nsamp = 0, intercept = true)
+        res = fsr(bridge, y, X; nsamp = 0, intercept = true, plots = PLOTS, msg = MSG)
 
         mdr = res.mdr
         (size(mdr, 1) >= TAIL && size(golden, 1) >= TAIL) ||
@@ -106,6 +108,14 @@ function main()
         end
         println("max abs diff : ", @sprintf("%.3e", max_abs_diff), "  (tol 1e-09)")
         println("RESULT       : ", ok ? "PASS" : "FAIL")
+
+        # Keep the engine alive so the figure window stays open; only block on an
+        # interactive terminal so piped / CI runs never hang.
+        if PLOTS != 0 && stdin isa Base.TTY
+            render_figures(bridge)
+            print("Press Enter to close the FSR figures and stop the engine...")
+            readline()
+        end
 
         return ok ? 0 : 1
     finally

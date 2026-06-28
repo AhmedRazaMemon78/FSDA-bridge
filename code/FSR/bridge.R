@@ -156,16 +156,19 @@ start_bridge = function(python = Sys.getenv("FSDA_DEV_VENV"), fsda_root = NULL) 
   handle
 }
 
-fsr = function(bridge, y, X, nsamp = 0, intercept = TRUE, h = NULL, init = NULL, bonflev = NULL) {
+fsr = function(bridge, y, X, nsamp = 0, intercept = TRUE, plots = 0, msg = 0,
+               h = NULL, init = NULL, bonflev = NULL) {
   # Run FSDA FSR through the Python bridge; return the key fields as plain R.
   .validate_bridge(bridge)
   inputs = .validate_inputs(y, X)
   # reticulate maps R named args to Python keyword args (NULL -> None); bridge.py
-  # forces plots=0/msg=0, reads the struct fields, and normalizes the 1-based
-  # outlier indices (scalar/array/empty) to a clean vector before returning.
+  # reads the struct fields, normalizes the 1-based outlier indices
+  # (scalar/array/empty) to a clean vector, and handles plots/msg (default off;
+  # msg routes MATLAB's messages to this console, plots opens live figure windows).
   res = bridge$module$fsr(
     bridge$engine, inputs$y, inputs$X,
     nsamp = as.integer(nsamp), intercept = isTRUE(intercept),
+    plots = as.integer(plots), msg = as.integer(msg),
     h = h, init = init, bonflev = bonflev
   )
 
@@ -180,6 +183,14 @@ fsr = function(bridge, y, X, nsamp = 0, intercept = TRUE, h = NULL, init = NULL,
     beta = as.numeric(res$beta),
     scale = as.numeric(res$scale)
   )
+}
+
+render_figures = function(bridge) {
+  # Force any open MATLAB figures (from fsr(plots=...)) to paint. Figures close
+  # when the engine quits, so keep the bridge alive until you have viewed them.
+  .validate_bridge(bridge)
+  bridge$module$render_figures(bridge$engine)
+  invisible(NULL)
 }
 
 stop_bridge = function(bridge) {
