@@ -1,0 +1,251 @@
+"""Agreement gate for the generic FSDA engine (spec 016), Python only.
+
+One reusable `FsdaEngine.start()` session exercises ALL FOUR well-behaved crossing
+cases through the *same* generic `call` / `eval` -- proving one shared engine
+replaces the per-routine plumbing without a wrapper per routine:
+
+    1. numeric array         mahalFS  -> ndarray            vs inline numpy oracle
+    2. struct -> dict        Score    -> dict, out["Score"] vs inline numpy oracle
+    3. nested struct         constructed struct of structs of arrays  -> exact
+    4. char/string scalar    FSR      -> out["class"] == "FSR"
+    (+) routine-agnostic     FSRaddt  -> out["Tdel"] tail   vs committed gold
+
+Cases 2/4/(+) also gate a real struct field against committed gold read **only**
+from the existing per-target `reference/` folders -- nothing existing is written
+or moved. `getYahoo` (timetable / struct-array) is deliberately out of scope.
+
+Run with the project venv's Python (engine boot is slow -- one session is reused):
+
+    "$FSDA_DEV_VENV" code/fsda_engine/check_engine.py [FSDA_ROOT]    # macOS / Linux
+    %FSDA_DEV_VENV% code\\fsda_engine\\check_engine.py [FSDA_ROOT]   # Windows
+
+Prints per-case PASS/FAIL + max abs diff and an overall result; writes a
+transparency summary to code/fsda_engine/reference/engine_check.csv. Gate
+tolerance is atol=1e-9 (CONSTITUTION sec 5).
+"""
+from __future__ import annotations
+
+import csv
+import platform
+import sys
+from importlib import metadata
+from pathlib import Path
+
+import numpy as np
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from engine import FsdaEngine
+
+TOL = 1e-9
+TAIL = 5                       # FSR mdr gate: last TAIL rows
+ADDT_TAIL = 3                  # FSRaddt Tdel gate: last ADDT_TAIL rows
+LA = np.array([-1.0, -0.5, 0.0, 0.5, 1.0])
+
+CODE = Path(__file__).resolve().parent.parent           # .../code
+REFERENCE = Path(__file__).resolve().parent / "reference"
+
+
+# --- inline numpy oracles (self-contained; mirror the per-target checks) ------
+def numpy_mahal(Y: np.ndarray, MU: np.ndarray, SIGMA: np.ndarray) -> np.ndarray:
+    """Reference squared Mahalanobis distances, mirroring FSDA's formula."""
+    diff = Y - MU.reshape(1, -1)
+    return np.sum((diff @ np.linalg.inv(SIGMA)) * diff, axis=1)
+
+
+def numpy_score(y: np.ndarray, X: np.ndarray, la: np.ndarray, intercept: bool = True) -> np.ndarray:
+    """Reference Box-Cox score-test statistics, mirroring FSDA Score.m
+    (copied from code/Score/check_Score.py so this gate stays self-contained)."""
+    y = np.asarray(y, dtype=float).reshape(-1)
+    X = np.asarray(X, dtype=float)
+    n = y.shape[0]
+    logy = np.log(y)
+    G = np.exp(np.sum(logy) / n)
+    logG = np.log(G)
+    Xb = np.hstack([np.ones((n, 1)), X]) if intercept else X
+    out = np.empty(len(la), dtype=float)
+    for i, lai in enumerate(la):
+        if abs(lai) < 1e-8:
+            z = G * logy
+            w = G * logy * (logy / 2.0 - logG)
+        else:
+            laiGlaim1 = lai * np.exp((lai - 1.0) * logG)
+            ylai = np.exp(lai * logy)
+            ylaim1 = ylai - 1.0
+            z = ylaim1 / laiGlaim1
+            w = (ylai * logy - ylaim1 * (1.0 / lai + logG)) / laiGlaim1
+        Xw = np.hstack([Xb, w.reshape(-1, 1)])
+        k = Xw.shape[1]
+        Q, R = np.linalg.qr(Xw)
+        beta = np.linalg.solve(R, Q.T @ z)
+        resid = z - Xw @ beta
+        sse = float(resid @ resid)
+        Ri = np.linalg.solve(R, np.eye(k))
+        xtxi = Ri @ Ri.T
+        se = np.sqrt(np.diag(xtxi) * sse / (n - k))
+        out[i] = -beta[-1] / se[-1]
+    return out
+
+
+# --- helpers -----------------------------------------------------------------
+def read_csv_matrix(path: Path) -> np.ndarray:
+    """Read a header+numeric CSV into a 2-D float array."""
+    rows = []
+    with open(path, newline="") as f:
+        reader = csv.reader(f)
+        next(reader)  # header
+        for line in reader:
+            rows.append([float(v) for v in line])
+    return np.asarray(rows, dtype=float)
+
+
+def require_fixture(path: Path, hint: str) -> np.ndarray:
+    """Read a committed fixture/gold CSV (read-only); explain how to make it if absent."""
+    if not path.exists():
+        raise FileNotFoundError(
+            f"required fixture not found: {path}\n  -> run {hint} first to materialize it."
+        )
+    return read_csv_matrix(path)
+
+
+def engine_pkg_version() -> str:
+    try:
+        return metadata.version("matlabengine")
+    except Exception:
+        return "n/a"
+
+
+def gate(name: str, ok: bool, diff: float, note: str = "") -> dict:
+    """Pack one case result for the summary table."""
+    return {"case": name, "ok": bool(ok), "max_abs_diff": float(diff), "note": note}
+
+
+# --- the four (+1) cases, all through the same generic engine -----------------
+def case_numeric(eng: FsdaEngine) -> dict:
+    """1. numeric array: mahalFS -> ndarray."""
+    Y = np.array([[1.0, 2.0], [2.0, 0.0], [3.0, 5.0], [0.0, -1.0], [4.0, 4.0]])
+    MU = np.array([2.0, 2.0])                       # 1-D -> crosses as 1 x v row
+    SIGMA = np.array([[2.0, 0.5], [0.5, 1.0]])
+    d = np.asarray(eng.call("mahalFS", Y, MU, SIGMA), dtype=float).reshape(-1)
+    ref = numpy_mahal(Y, MU, SIGMA)
+    diff = float(np.max(np.abs(d - ref)))
+    return gate("1 numeric array (mahalFS)", np.allclose(d, ref, rtol=0.0, atol=TOL),
+                diff, "matlab.double -> ndarray")
+
+
+def case_struct(eng: FsdaEngine) -> dict:
+    """2. struct -> dict: Score, read out["Score"]."""
+    wool = require_fixture(CODE / "Score" / "reference" / "wool.csv",
+                           "code/Score/check_Score.py")
+    y = wool[:, -1].reshape(-1, 1)                  # (n, 1) column -> crosses as column
+    X = wool[:, :-1]
+    out = eng.call("Score", y, X, la=LA, intercept=True)
+    if not isinstance(out, dict):
+        return gate("2 struct -> dict (Score)", False, float("inf"),
+                    f"expected dict, got {type(out).__name__}")
+    sc = np.asarray(out["Score"], dtype=float).reshape(-1)
+    ref = numpy_score(y, X, LA, intercept=True)
+    diff = float(np.max(np.abs(sc - ref)))
+    return gate("2 struct -> dict (Score)", np.allclose(sc, ref, rtol=0.0, atol=TOL),
+                diff, "struct -> dict, out['Score']")
+
+
+def case_nested(eng: FsdaEngine) -> dict:
+    """3. nested struct of arrays: constructed struct of structs of arrays."""
+    s = eng.eval("struct('a',[1 2 3],'b',struct('c',[4 5 6],'d',[7 8 9]))")
+    try:
+        a = np.asarray(s["a"], dtype=float).reshape(-1)
+        c = np.asarray(s["b"]["c"], dtype=float).reshape(-1)
+        d = np.asarray(s["b"]["d"], dtype=float).reshape(-1)
+    except (TypeError, KeyError) as exc:
+        return gate("3 nested struct of arrays", False, float("inf"),
+                    f"did not recurse to dict-of-dict-of-arrays: {exc}")
+    want_a, want_c, want_d = np.array([1, 2, 3.]), np.array([4, 5, 6.]), np.array([7, 8, 9.])
+    diff = float(max(np.max(np.abs(a - want_a)),
+                     np.max(np.abs(c - want_c)),
+                     np.max(np.abs(d - want_d))))
+    ok = (isinstance(s, dict) and isinstance(s["b"], dict) and diff <= TOL)
+    return gate("3 nested struct of arrays", ok, diff, "dict of dict of ndarrays")
+
+
+def case_fsr(eng: FsdaEngine) -> dict:
+    """4. char/string scalar (+ struct of arrays): FSR out['class'] and mdr tail."""
+    stars = require_fixture(CODE / "FSR" / "reference" / "stars.csv",
+                            "code/FSR/check_FSR.py")
+    gold = require_fixture(CODE / "FSR" / "reference" / "FSR_mdr.csv",
+                           "code/FSR/check_FSR.py")
+    y = stars[:, -1].reshape(-1, 1)
+    X = stars[:, :-1]
+    # FSDA's own 'msg' defaults ON; silence it via `options` (its name collides with
+    # call's stdout-capture flag, so it cannot be passed as a plain kwarg). plots=0
+    # has no such collision, so it goes as an ordinary name/value kwarg.
+    out = eng.call("FSR", y, X, nsamp=0, intercept=True, plots=1, options={"msg": 0})
+    cls = out.get("class")
+    mdr = np.asarray(out["mdr"], dtype=float)
+    tail = mdr[-TAIL:]
+    gtail = gold[-TAIL:]
+    same = tail.shape == gtail.shape
+    diff = float(np.max(np.abs(tail - gtail))) if same else float("inf")
+    ok = (cls == "FSR") and same and np.allclose(tail, gtail, rtol=0.0, atol=TOL)
+    return gate("4 char scalar + struct (FSR)", ok, diff,
+                f"out['class']={cls!r}; mdr tail vs gold")
+
+
+def case_fsraddt(eng: FsdaEngine) -> dict:
+    """(+) routine-agnostic second struct routine: FSRaddt Tdel tail vs gold."""
+    wool = require_fixture(CODE / "FSRaddt" / "reference" / "wool.csv",
+                           "code/FSRaddt/check_FSRaddt.py")
+    gold = require_fixture(CODE / "FSRaddt" / "reference" / "FSRaddt_Tdel.csv",
+                           "code/FSRaddt/check_FSRaddt.py")
+    y = wool[:, -1].reshape(-1, 1)
+    X = wool[:, :-1]
+    out = eng.call("FSRaddt", y, X, nsamp=0, intercept=True, plots=0, options={"msg": 0})
+    tdel = np.asarray(out["Tdel"], dtype=float)
+    tail = tdel[-ADDT_TAIL:]
+    gtail = gold[-ADDT_TAIL:]
+    same = tail.shape == gtail.shape
+    diff = float(np.max(np.abs(tail - gtail))) if same else float("inf")
+    ok = same and np.allclose(tail, gtail, rtol=0.0, atol=TOL)
+    return gate("+ routine-agnostic (FSRaddt)", ok, diff, "out['Tdel'] tail vs gold")
+
+
+def main() -> int:
+    fsda_root = sys.argv[1] if len(sys.argv) > 1 else None
+    eng = FsdaEngine.start(fsda_root=fsda_root)
+    try:
+        matlab_version = eng.version()
+        results = [
+            case_numeric(eng),
+            case_struct(eng),
+            case_nested(eng),
+            case_fsr(eng),
+            case_fsraddt(eng),
+        ]
+    finally:
+        eng.stop()
+
+    overall = all(r["ok"] for r in results)
+
+    print("=== spec 016: generic FSDA engine agreement check ===")
+    print(f"Python       : {platform.python_version()}")
+    print(f"MATLAB       : {matlab_version}")
+    print(f"engine pkg   : {engine_pkg_version()}")
+    print(f"tolerance    : atol {TOL:.0e}")
+    print("cases (one shared FsdaEngine.call / .eval):")
+    for r in results:
+        print(f"  [{'PASS' if r['ok'] else 'FAIL'}]  {r['case']:<30}  "
+              f"max abs diff {r['max_abs_diff']:.3e}   {r['note']}")
+    print(f"RESULT       : {'PASS' if overall else 'FAIL'}")
+
+    REFERENCE.mkdir(exist_ok=True)
+    with open(REFERENCE / "engine_check.csv", "w", newline="") as f:
+        w = csv.writer(f)
+        w.writerow(["case", "result", "max_abs_diff", "note"])
+        for r in results:
+            w.writerow([r["case"], "PASS" if r["ok"] else "FAIL",
+                        f"{r['max_abs_diff']:.6e}", r["note"]])
+
+    return 0 if overall else 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

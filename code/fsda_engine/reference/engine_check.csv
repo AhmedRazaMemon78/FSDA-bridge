@@ -1,0 +1,6 @@
+case,result,max_abs_diff,note
+1 numeric array (mahalFS),PASS,0.000000e+00,matlab.double -> ndarray
+2 struct -> dict (Score),PASS,2.472689e-12,"struct -> dict, out['Score']"
+3 nested struct of arrays,PASS,0.000000e+00,dict of dict of ndarrays
+4 char scalar + struct (FSR),PASS,0.000000e+00,out['class']='FSR'; mdr tail vs gold
++ routine-agnostic (FSRaddt),PASS,0.000000e+00,out['Tdel'] tail vs gold
