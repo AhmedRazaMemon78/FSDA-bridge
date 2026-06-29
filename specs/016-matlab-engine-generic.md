@@ -78,9 +78,14 @@
 
 ## Tasks
 
-- [ ] #p3 Later: port the same pattern to `engine.jl` / `engine.R`
+(all complete — see Done)
 
 ### Done
+
+- [x] #p3 Port the same pattern to `engine.jl` / `engine.R` — done in specs 017/018
+  (Julia + R generic surfaces, both 7/7 PASS) — 2026-06-29
+- [x] #p2 First `/multivariate` spot-check: `corrNominal(N)` crosses correctly (case 7,
+  chi2 & CramerV vs numpy oracle, 1e-9). **No engine change needed** — see Learnings — 2026-06-29
 
 - [x] #p1 Write `code/fsda_engine/engine.py` (generic engine + converters) — 2026-06-28
 - [x] #p1 Write `code/fsda_engine/check_engine.py` (four-case + FSRaddt gate) — 2026-06-28
@@ -113,3 +118,11 @@
   `getYahoo`). A `toolbox/regression` audit found only `avasms`/`univariatems` return
   tables; this closed both. Remaining non-generic returns there: struct-arrays /
   datetime (none in regression) and table *inputs* (functions accept numeric too).
+- **A struct that *contains* table fields marshals fine — no fix needed.** `corrNominal`
+  returns `out` with table fields (`out.Ntable`, `out.ConfLimtable`, …); the R2026a engine
+  auto-converts an **all-numeric** table to a numeric array on the way out, so the whole
+  struct crosses via the fast `eng.workspace[var]` path. Only the table *labels* are
+  dropped — and with matrix input those are auto-generated defaults, so it's immaterial.
+  (A predicted "struct-with-table errors" fix was investigated and **not** built — the
+  empirical check disproved the premise.) corrNominal's matrix-vs-table *input* makes no
+  numeric difference (the table input only supplies labels).

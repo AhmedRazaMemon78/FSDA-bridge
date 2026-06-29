@@ -13,6 +13,8 @@ replaces the per-routine plumbing without a wrapper per routine:
                              that lets avasms / univariatems cross)
     6. real table fn         univariatems(y,X) -> Tsel table -> dict (STRUCTURAL:
                              robust cols are stochastic, so shape not value)
+    7. /multivariate         corrNominal(N) -> struct (w/ table fields) -> chi2 &
+                             CramerV vs numpy oracle
 
 Cases 2/4/(+) also gate a real struct field against committed gold read **only**
 from the existing per-target `reference/` folders -- nothing existing is written
@@ -265,6 +267,32 @@ def case_univariatems(eng: FsdaEngine) -> dict:
                 f"structural: Tsel -> dict, {len(names)} cols x {h} rows")
 
 
+def case_corrnominal(eng: FsdaEngine) -> dict:
+    """7. /multivariate spot-check: corrNominal(N) on a contingency matrix -> struct.
+
+    Confirms a multivariate routine crosses end-to-end and gates chi2 & Cramer's V vs an
+    inline numpy oracle. corrNominal's out struct also holds *table* fields (Ntable,
+    ConfLimtable, ...); the R2026a engine returns those as numeric arrays, so the whole
+    struct marshals without special handling -- no engine change was needed. dispresults
+    is off to keep the gate quiet."""
+    N = np.array([[10., 20., 30.], [40., 50., 60.], [70., 80., 90.]])
+    out = eng.call("corrNominal", N, dispresults=False)
+    if not isinstance(out, dict):
+        return gate("7 multivariate (corrNominal)", False, float("inf"),
+                    f"expected dict, got {type(out).__name__}")
+    # numpy oracle: chi-square and Cramer's V for a contingency table
+    rt = N.sum(1, keepdims=True); ct = N.sum(0, keepdims=True); tot = N.sum()
+    E = rt @ ct / tot
+    chi2_ref = float(((N - E) ** 2 / E).sum())
+    I, J = N.shape
+    cramer_ref = float(np.sqrt(chi2_ref / (tot * (min(I, J) - 1))))
+    chi2 = float(np.asarray(out["Chi2"]))
+    cramer = float(np.asarray(out["CramerV"]).reshape(-1)[0])
+    diff = max(abs(chi2 - chi2_ref), abs(cramer - cramer_ref))
+    return gate("7 multivariate (corrNominal)", diff <= TOL, diff,
+                f"chi2={chi2:.4f}, CramerV={cramer:.4f} vs numpy oracle")
+
+
 def main() -> int:
     fsda_root = sys.argv[1] if len(sys.argv) > 1 else None
     eng = FsdaEngine.start(fsda_root=fsda_root)
@@ -278,6 +306,7 @@ def main() -> int:
             case_fsraddt(eng),
             case_table(eng),
             case_univariatems(eng),
+            case_corrnominal(eng),
         ]
     finally:
         eng.stop()
