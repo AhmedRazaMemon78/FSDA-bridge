@@ -27,6 +27,7 @@ source(file.path(.script_dir, "engine.R"))
 
 TOL = 1e-9
 CODE = normalizePath(file.path(.script_dir, ".."), winslash = "/", mustWork = TRUE)  # .../code
+REFERENCE = file.path(.script_dir, "reference")  # engine's own golds/fixtures
 LA = c(-1.0, -0.5, 0.0, 0.5, 1.0)
 
 read_matrix = function(...) {
@@ -120,6 +121,47 @@ case_univariatems = function(h) {
        paste0("structural: Tsel -> list, ", length(names), " cols x ", hgt, " rows"))
 }
 
+case_corrnominal = function(h) {
+  N = matrix(c(10, 20, 30, 40, 50, 60, 70, 80, 90), 3, 3, byrow = TRUE)
+  out = fsda_call(h, "corrNominal", N, dispresults = FALSE)
+  if (!is.list(out)) return(gate("7 multivariate (corrNominal)", FALSE, Inf, "expected list"))
+  rt = rowSums(N); ct = colSums(N); tot = sum(N)
+  E = outer(rt, ct) / tot
+  chi2_ref = sum((N - E)^2 / E)
+  cramer_ref = sqrt(chi2_ref / (tot * (min(dim(N)) - 1)))
+  chi2 = as.numeric(out$Chi2)[1]; cramer = as.numeric(out$CramerV)[1]
+  diff = max(abs(chi2 - chi2_ref), abs(cramer - cramer_ref))
+  gate("7 multivariate (corrNominal)", diff <= TOL, diff, "chi2/CramerV vs oracle")
+}
+
+case_fsm = function(h) {
+  Y = read_matrix(REFERENCE, "FSM_Y.csv")          # shared fixture (same Y as Python)
+  eval_m(h, "rng(0)", nargout = 0)                 # fix FSM's random initial subset
+  out = fsda_call(h, "FSM", Y, plots = 0, msg = 0)
+  cls = if (is.null(out$class)) "" else as.character(out$class)
+  if (!is.list(out) || cls != "FSM") return(gate("8 FSM (multivariate FS)", FALSE, Inf, "expected FSM struct"))
+  mmd = out$mmd
+  gold = read_matrix(REFERENCE, "FSM_mmd.csv")
+  tail = mmd[(nrow(mmd) - 4):nrow(mmd), ]
+  gtail = gold[(nrow(gold) - 4):nrow(gold), ]
+  diff = max(abs(tail - gtail))
+  gate("8 FSM (multivariate FS)", diff <= TOL, diff, "out$mmd tail vs gold")
+}
+
+case_mcd = function(h) {
+  Y = read_matrix(REFERENCE, "FSM_Y.csv")
+  v = ncol(Y)
+  eval_m(h, "rng(0)", nargout = 0)
+  res = fsda_call(h, "mcd", Y, nargout = 2, plots = 0, msg = 0)   # tuple -> list of 2 lists
+  if (!is.list(res) || length(res) != 2) return(gate("9 mcd (nargout=2 tuple)", FALSE, Inf, "expected 2 outputs"))
+  RAW = res[[1]]; REW = res[[2]]
+  ok = is.list(RAW) && is.list(REW) &&
+       identical(as.character(RAW$class), "mcd") && identical(as.character(REW$class), "mcdr") &&
+       length(as.numeric(RAW$loc)) == v && all(dim(as.matrix(RAW$cov)) == c(v, v))
+  gate("9 mcd (nargout=2 tuple)", ok, 0.0,
+       paste0("RAW.class=", as.character(RAW$class), ", REW.class=", as.character(REW$class)))
+}
+
 main = function() {
   fsda_root = local({ a = commandArgs(trailingOnly = TRUE); if (length(a) >= 1 && nzchar(a[1])) a[1] else NULL })
   h = start_engine(fsda_root = fsda_root)
@@ -127,7 +169,8 @@ main = function() {
 
   diags = diagnostics(h)
   rs = list(case_numeric(h), case_struct(h), case_nested(h), case_fsr(h),
-            case_fsraddt(h), case_table(h), case_univariatems(h))
+            case_fsraddt(h), case_table(h), case_univariatems(h),
+            case_corrnominal(h), case_fsm(h), case_mcd(h))
 
   overall = all(vapply(rs, function(r) r$ok, logical(1)))
   cat("=== spec 018: generic FSDA engine — R surface ===\n")

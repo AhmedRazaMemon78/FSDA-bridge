@@ -311,11 +311,22 @@ def case_corrnominal(eng: FsdaEngine) -> dict:
 
 
 def _fsm_dataset() -> np.ndarray:
-    """Fixed multivariate dataset (seeded numpy is reproducible across runs/platforms):
-    clean trivariate normal with a few clear outliers."""
+    """Fixed multivariate dataset, persisted so all three language gates read an
+    identical Y (the FSM gold is FSDA-RNG-specific, not numpy-specific). Seeded numpy
+    generates it on first run and writes reference/FSM_Y.csv (round-trippable floats);
+    later runs — and the Julia/R gates — read that committed fixture."""
+    path = REFERENCE / "FSM_Y.csv"
+    if path.exists():
+        return read_csv_matrix(path)
     rng = np.random.default_rng(0)
     Y = rng.standard_normal((40, 3))
     Y[-3:] += 6.0
+    REFERENCE.mkdir(exist_ok=True)
+    with open(path, "w", newline="") as f:
+        w = csv.writer(f)
+        w.writerow([f"v{j + 1}" for j in range(Y.shape[1])])
+        for row in Y:
+            w.writerow(list(row))
     return Y
 
 

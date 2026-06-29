@@ -17,6 +17,7 @@ using Printf, Random, LinearAlgebra
 
 const TOL = 1e-9
 const CODE = abspath(joinpath(SCRIPT_DIR, ".."))          # .../code
+const REFERENCE = joinpath(SCRIPT_DIR, "reference")        # engine's own golds/fixtures
 const LA = [-1.0, -0.5, 0.0, 0.5, 1.0]
 
 # --- helpers -----------------------------------------------------------------
@@ -113,13 +114,55 @@ function case_univariatems(h)
     gate("6 real table fn (univariatems)", ok, 0.0, "structural: Tsel -> Dict, $(length(names)) cols x $hgt rows")
 end
 
+function case_corrnominal(h)
+    N = [10.0 20 30; 40 50 60; 70 80 90]
+    out = call(h, "corrNominal", N; dispresults = false)
+    (out isa Dict) || return gate("7 multivariate (corrNominal)", false, Inf, "expected Dict")
+    rt = sum(N, dims = 2); ct = sum(N, dims = 1); tot = sum(N)
+    E = rt .* ct ./ tot
+    chi2_ref = sum((N .- E) .^ 2 ./ E)
+    I, J = size(N); cramer_ref = sqrt(chi2_ref / (tot * (min(I, J) - 1)))
+    chi2 = Float64(first(out["Chi2"])); cramer = Float64(first(out["CramerV"]))
+    diff = max(abs(chi2 - chi2_ref), abs(cramer - cramer_ref))
+    gate("7 multivariate (corrNominal)", diff <= TOL, diff, "chi2/CramerV vs oracle")
+end
+
+function case_fsm(h)
+    Y = read_csv(joinpath(REFERENCE, "FSM_Y.csv"))      # shared fixture (same Y as Python)
+    eval_expr(h, "rng(0)"; nargout = 0)                 # fix FSM's random initial subset
+    out = call(h, "FSM", Y; plots = 0, msg = 0)
+    (out isa Dict && get(out, "class", "") == "FSM") ||
+        return gate("8 FSM (multivariate FS)", false, Inf, "expected FSM struct")
+    mmd = out["mmd"]
+    gold = read_csv(joinpath(REFERENCE, "FSM_mmd.csv"))
+    tail = mmd[end-4:end, :]; gtail = gold[end-4:end, :]
+    diff = maximum(abs.(tail .- gtail))
+    gate("8 FSM (multivariate FS)", diff <= TOL, diff, "out[\"mmd\"] tail vs gold")
+end
+
+function case_mcd(h)
+    Y = read_csv(joinpath(REFERENCE, "FSM_Y.csv"))
+    v = size(Y, 2)
+    eval_expr(h, "rng(0)"; nargout = 0)
+    res = call(h, "mcd", Y; nargout = 2, plots = 0, msg = 0)   # tuple -> Vector of 2 Dicts
+    (res isa AbstractVector && length(res) == 2) ||
+        return gate("9 mcd (nargout=2 tuple)", false, Inf, "expected 2 outputs")
+    RAW, REW = res[1], res[2]
+    ok = (RAW isa Dict) && (REW isa Dict) &&
+         get(RAW, "class", "") == "mcd" && get(REW, "class", "") == "mcdr" &&
+         length(vec(RAW["loc"])) == v && size(RAW["cov"]) == (v, v)
+    gate("9 mcd (nargout=2 tuple)", ok, 0.0,
+         "RAW.class=$(get(RAW,"class","")), REW.class=$(get(REW,"class","")), cov $(size(RAW["cov"]))")
+end
+
 function main()
     fsda_root = length(ARGS) >= 1 && !isempty(ARGS[1]) ? ARGS[1] : nothing
     h = start_engine(fsda_root = fsda_root)
     results = try
         d = diagnostics(h)
         rs = [case_numeric(h), case_struct(h), case_nested(h), case_fsr(h),
-              case_fsraddt(h), case_table(h), case_univariatems(h)]
+              case_fsraddt(h), case_table(h), case_univariatems(h),
+              case_corrnominal(h), case_fsm(h), case_mcd(h)]
         (d, rs)
     finally
         try; stop_engine(h); catch; end
