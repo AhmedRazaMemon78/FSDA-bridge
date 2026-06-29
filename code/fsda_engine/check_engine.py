@@ -1,7 +1,7 @@
 """Agreement gate for the generic FSDA engine (spec 016), Python only.
 
-One reusable `FsdaEngine.start()` session exercises ALL FOUR well-behaved crossing
-cases through the *same* generic `call` / `eval` -- proving one shared engine
+One reusable `FsdaEngine.start()` session exercises every well-behaved crossing
+case through the *same* generic `call` / `eval` -- proving one shared engine
 replaces the per-routine plumbing without a wrapper per routine:
 
     1. numeric array         mahalFS  -> ndarray            vs inline numpy oracle
@@ -9,10 +9,12 @@ replaces the per-routine plumbing without a wrapper per routine:
     3. nested struct         constructed struct of structs of arrays  -> exact
     4. char/string scalar    FSR      -> out["class"] == "FSR"
     (+) routine-agnostic     FSRaddt  -> out["Tdel"] tail   vs committed gold
+    5. table -> dict         constructed array2table         -> exact (the path
+                             that lets avasms / univariatems cross)
 
 Cases 2/4/(+) also gate a real struct field against committed gold read **only**
 from the existing per-target `reference/` folders -- nothing existing is written
-or moved. `getYahoo` (timetable / struct-array) is deliberately out of scope.
+or moved. `getYahoo` (struct-array) remains out of scope.
 
 Run with the project venv's Python (engine boot is slow -- one session is reused):
 
@@ -208,6 +210,32 @@ def case_fsraddt(eng: FsdaEngine) -> dict:
     return gate("+ routine-agnostic (FSRaddt)", ok, diff, "out['Tdel'] tail vs gold")
 
 
+def case_table(eng: FsdaEngine) -> dict:
+    """5. MATLAB table -> dict: the mechanism that lets avasms / univariatems cross.
+
+    A table cannot be returned to Python directly, so the engine decomposes it
+    MATLAB-side. Build two known tables and check the round-trip exactly: column
+    data by VariableNames, plus RowNames."""
+    try:
+        t = eng.eval("array2table([1 2 3;4 5 6],'VariableNames',{'aa','bb','cc'})")
+        r = eng.eval("array2table([10;20],'VariableNames',{'v'},'RowNames',{'r1','r2'})")
+        names_ok = (t["VariableNames"] == ["aa", "bb", "cc"]) and (t["RowNames"] == [])
+        cols = {k: np.asarray(v, dtype=float).reshape(-1) for k, v in t["data"].items()}
+        rownames_ok = (r["RowNames"] == ["r1", "r2"])
+        want = {"aa": [1, 4.], "bb": [2, 5.], "cc": [3, 6.], "v": [10, 20.]}
+        diff = float(max(
+            np.max(np.abs(cols["aa"] - want["aa"])),
+            np.max(np.abs(cols["bb"] - want["bb"])),
+            np.max(np.abs(cols["cc"] - want["cc"])),
+            np.max(np.abs(np.asarray(r["data"]["v"], dtype=float).reshape(-1) - want["v"])),
+        ))
+    except (TypeError, KeyError) as exc:
+        return gate("5 table -> dict", False, float("inf"),
+                    f"did not decompose table to dict: {exc}")
+    ok = names_ok and rownames_ok and diff <= TOL
+    return gate("5 table -> dict", ok, diff, "VariableNames + data + RowNames")
+
+
 def main() -> int:
     fsda_root = sys.argv[1] if len(sys.argv) > 1 else None
     eng = FsdaEngine.start(fsda_root=fsda_root)
@@ -219,6 +247,7 @@ def main() -> int:
             case_nested(eng),
             case_fsr(eng),
             case_fsraddt(eng),
+            case_table(eng),
         ]
     finally:
         eng.stop()

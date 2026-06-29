@@ -11,17 +11,21 @@ into ONE place so a new FSDA routine usually needs no wrapper at all -- you call
     d   = eng.call("mahalFS", Y, MU, SIGMA)            # numeric array  -> ndarray
     out = eng.call("Score", y, X, la=la, intercept=True)  # struct      -> dict
 
-and the generic converters handle the crossing. It covers the four *well-behaved*
-MATLAB return shapes (see spec 016):
+and the generic converters handle the crossing. It covers these MATLAB return
+shapes (see spec 016):
 
     numeric array            matlab.double      -> ndarray
     struct                   dict               -> dict (recursed)
     nested struct of arrays  dict of dicts      -> dict of dicts of ndarrays
     char/string scalar       char               -> str
+    table / timetable        (cannot return)    -> dict {VariableNames, RowNames
+                                                  / RowTimes, data}  (decomposed
+                                                  MATLAB-side; see _table_to_dict)
 
-OUT OF SCOPE (handled by its own bespoke bridge): `getYahoo` and anything returning
-a MATLAB timetable / table / struct-array / datetime -- those do not marshal
-generically (see code/getYahoo/bridge.py).
+A table/timetable cannot be returned to Python by the engine at all, so `call` runs
+through the MATLAB workspace and decomposes it there -- the same approach
+`code/getYahoo/bridge.py` uses for its timetable. STILL OUT OF SCOPE: struct-ARRAYS
+and datetime/duration scalars (getYahoo keeps its own bespoke bridge for those).
 
 Marshalling rules (CONSTITUTION sec 4):
   * Output is returned in MATLAB's natural shape -- NO silent reshape. A column
@@ -38,6 +42,7 @@ See spec 016 (specs/016-matlab-engine-generic.md) and CONSTITUTION.md.
 from __future__ import annotations
 
 import io
+import re
 import sys
 
 import numpy as np
@@ -52,6 +57,26 @@ import matlab.engine
 # does collide with one of these reserved words is handled via the `options` dict:
 #     eng.call("FSR", y, X, options={"nargout": ...})
 _RESERVED_CALL_KWARGS = ("nargout", "echo_output", "options")
+
+# call()/eval() execute through the MATLAB workspace (so table/timetable outputs --
+# which the engine cannot return directly -- can be decomposed MATLAB-side). The
+# function name and option names are interpolated into an eval command, so they are
+# validated against this allow-list first (an injection guard, like getYahoo).
+_IDENT_RE = re.compile(r"^[A-Za-z][A-Za-z0-9_]*$")
+
+
+def _cellstr_list(raw) -> list:
+    """MATLAB cellstr -> Python list[str]. The engine returns a 1-element cell as a
+    bare str and a multi-element cell as a list; an empty cell as an empty value.
+    Collapse all of these to a list[str]."""
+    if raw is None:
+        return []
+    if isinstance(raw, str):
+        return [raw]
+    try:
+        return [str(x) for x in raw]
+    except TypeError:
+        return [str(raw)]
 
 
 def to_matlab(x):
@@ -157,18 +182,80 @@ class FsdaEngine:
                       is the bridge's OWN tee, named so it cannot clash with an FSDA
                       option; it does not change what FSDA prints, only whether an
                       embedded host (reticulate / PythonCall) surfaces it.
+
+        Execution runs through the MATLAB workspace so outputs the engine cannot
+        return directly -- a **table / timetable** -- can be decomposed MATLAB-side
+        into a Python dict (see `_table_to_dict`); numeric/struct/char outputs cross
+        exactly as before. A returned table -> dict has keys ``VariableNames``,
+        ``RowNames`` (or ISO ``RowTimes`` for a timetable), and ``data`` (column ->
+        ndarray / list[str]).
         """
-        margs = [to_matlab(a) for a in args]
+        if not _IDENT_RE.match(name):
+            raise ValueError(f"unsafe / malformed function name: {name!r}")
         pairs = dict(options or {})
         pairs.update(kwargs)
-        for key, value in pairs.items():
-            margs.append(key)               # option name crosses as a char literal
-            margs.append(to_matlab(value))
+        for key in pairs:
+            if not _IDENT_RE.match(str(key)):
+                raise ValueError(f"unsafe / malformed option name: {key!r}")
 
-        fn = getattr(self.eng, name)
+        ws = self.eng.workspace
+        in_names, opt_tokens, temp = [], [], []
+        for i, a in enumerate(args):
+            vn = f"fe_in{i}"
+            ws[vn] = to_matlab(a)
+            in_names.append(vn)
+            temp.append(vn)
+        for key, value in pairs.items():
+            vn = f"fe_opt_{key}"
+            ws[vn] = to_matlab(value)
+            opt_tokens.append(f"'{key}',{vn}")   # 'name', tempvar
+            temp.append(vn)
+
+        out_names = [f"fe_out{j}" for j in range(nargout)]
+        temp.extend(out_names)
+        rhs = ",".join(in_names + opt_tokens)
+        if nargout == 0:
+            cmd = f"{name}({rhs});"
+        elif nargout == 1:
+            cmd = f"{out_names[0]} = {name}({rhs});"
+        else:
+            cmd = f"[{','.join(out_names)}] = {name}({rhs});"
+
+        try:
+            self._eval_cmd(cmd, echo_output)
+            if nargout == 0:
+                return None
+            results = [self._marshal_var(vn) for vn in out_names]
+        finally:
+            self._clear(temp)
+        return results[0] if nargout == 1 else tuple(results)
+
+    def eval(self, expr: str, nargout: int = 1):
+        """Evaluate a MATLAB expression and marshal the result back generically.
+
+        Handy for building/reading values the function `call` surface does not cover
+        (e.g. a constructed nested struct, or a table). nargout=0 returns None. For
+        nargout==1 the value is bound to a workspace temp first, so a table/timetable
+        expression decomposes through the same path as `call`.
+        """
+        if nargout == 0:
+            self.eng.eval(expr, nargout=0)
+            return None
+        if nargout == 1:
+            vn = "fe_eval0"
+            try:
+                self.eng.eval(f"{vn} = ({expr});", nargout=0)
+                return self._marshal_var(vn)
+            finally:
+                self._clear([vn])
+        return from_matlab(self.eng.eval(expr, nargout=nargout))
+
+    # --- workspace execution helpers -----------------------------------------
+    def _eval_cmd(self, cmd: str, echo_output: bool = False) -> None:
+        """Run a MATLAB statement, optionally tee-ing its stdout/stderr (see call())."""
         if echo_output:
             out_buf, err_buf = io.StringIO(), io.StringIO()
-            raw = fn(*margs, nargout=nargout, stdout=out_buf, stderr=err_buf)
+            self.eng.eval(cmd, nargout=0, stdout=out_buf, stderr=err_buf)
             if out_buf.getvalue():
                 sys.stdout.write(out_buf.getvalue())
                 sys.stdout.flush()          # surface under reticulate / PythonCall too
@@ -176,19 +263,51 @@ class FsdaEngine:
                 sys.stderr.write(err_buf.getvalue())
                 sys.stderr.flush()
         else:
-            raw = fn(*margs, nargout=nargout)
-        return from_matlab(raw)
+            self.eng.eval(cmd, nargout=0)
 
-    def eval(self, expr: str, nargout: int = 1):
-        """Evaluate a MATLAB expression and marshal the result back generically.
+    def _clear(self, names: list) -> None:
+        """Remove the bridge's `fe_*` temp variables from the MATLAB workspace."""
+        if names:
+            self.eng.eval("clear " + " ".join(names), nargout=0)
 
-        Handy for building/reading values the function `call` surface does not
-        cover (e.g. a constructed nested struct). nargout=0 returns None.
+    def _marshal_var(self, vn: str):
+        """Marshal one workspace variable: a table/timetable -> dict (decomposed
+        MATLAB-side); anything else read out and passed through `from_matlab`."""
+        if int(self.eng.eval(f"double(istable({vn})||istimetable({vn}))", nargout=1)):
+            return self._table_to_dict(vn)
+        return from_matlab(self.eng.workspace[vn])
+
+    def _table_to_dict(self, vn: str) -> dict:
+        """Decompose a MATLAB table/timetable workspace var into a Python dict.
+
+        Columns are read by **index** (`T{:,j}`), never by interpolating their names,
+        so a column name can be anything without risk. Numeric/logical columns become
+        ndarrays (single columns flattened to 1-D); other columns (categorical /
+        string / cellstr) become list[str].
         """
-        if nargout == 0:
-            self.eng.eval(expr, nargout=0)
-            return None
-        return from_matlab(self.eng.eval(expr, nargout=nargout))
+        is_tt = int(self.eng.eval(f"double(istimetable({vn}))", nargout=1))
+        varnames = _cellstr_list(self.eng.eval(f"{vn}.Properties.VariableNames", nargout=1))
+        height = int(self.eng.eval(f"double(height({vn}))", nargout=1))
+
+        data = {}
+        for j, col in enumerate(varnames, start=1):
+            is_num = int(self.eng.eval(
+                f"double(isnumeric({vn}{{:,{j}}})||islogical({vn}{{:,{j}}}))", nargout=1))
+            if is_num:
+                arr = np.asarray(self.eng.eval(f"{vn}{{:,{j}}}", nargout=1), dtype=float)
+                data[col] = arr.reshape(-1) if (arr.ndim == 1 or arr.shape[1] == 1) else arr
+            else:
+                data[col] = _cellstr_list(
+                    self.eng.eval(f"cellstr(string({vn}{{:,{j}}}))", nargout=1))
+
+        result = {"VariableNames": varnames, "data": data, "height": height}
+        if is_tt:
+            result["RowTimes"] = _cellstr_list(
+                self.eng.eval(f"cellstr(string({vn}.Properties.RowTimes))", nargout=1))
+        else:
+            result["RowNames"] = _cellstr_list(
+                self.eng.eval(f"{vn}.Properties.RowNames", nargout=1))
+        return result
 
     # --- diagnostics ---------------------------------------------------------
     def which(self, name: str) -> str:

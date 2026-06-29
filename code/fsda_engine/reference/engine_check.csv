@@ -4,3 +4,4 @@ case,result,max_abs_diff,note
 3 nested struct of arrays,PASS,0.000000e+00,dict of dict of ndarrays
 4 char scalar + struct (FSR),PASS,0.000000e+00,out['class']='FSR'; mdr tail vs gold
 + routine-agnostic (FSRaddt),PASS,0.000000e+00,out['Tdel'] tail vs gold
+5 table -> dict,PASS,0.000000e+00,VariableNames + data + RowNames

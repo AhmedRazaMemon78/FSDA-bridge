@@ -20,14 +20,16 @@
   | `struct` (`Score`, `FSR`, `FSRaddt`) | → dict (recursed) |
   | nested struct of arrays | → dict of dicts of ndarrays |
   | char/string scalar | → str |
+  | `table` / `timetable` (`avasms`, `univariatems`) | → dict `{VariableNames, RowNames/RowTimes, data}` (decomposed MATLAB-side) |
 
 - **Done when:** `code/fsda_engine/check_engine.py` prints overall `PASS` — all
-  four cases (plus a second struct routine, `FSRaddt`, for routine-agnosticism)
-  agree at `atol=1e-9` through the *same* engine session, gated against inline
-  numpy oracles (mahalFS, Score) and committed gold read-only (FSR, FSRaddt).
+  cases (incl. a constructed `table`→dict round-trip, plus `FSRaddt` for
+  routine-agnosticism) agree at `atol=1e-9` through the *same* engine session,
+  gated against inline numpy oracles (mahalFS, Score) and committed gold read-only
+  (FSR, FSRaddt).
 
-- **Out of scope:** `getYahoo` and any MATLAB **timetable / table / struct-array /
-  datetime** return (does not marshal generically — keeps its bespoke bridge);
+- **Out of scope:** `getYahoo` and any MATLAB **struct-array / datetime** return
+  (does not marshal generically — keeps its bespoke bridge);
   the Julia (`engine.jl`) and R (`engine.R`) surfaces (same pattern, later);
   migrating or deleting the existing `code/<target>/bridge.py` files; editing
   `CONSTITUTION.md` / `CLAUDE.md`. This step is purely additive.
@@ -51,9 +53,17 @@
     `eng.call("mahalFS", Y, MU, SIGMA)` → ndarray;
     `eng.call("Score", y, X, la=LA, intercept=True)` → dict.
   - `eval(expr, nargout=1)` — evaluate + marshal back (used to build the nested
-    struct in case 3).
+    struct in case 3 and the constructed table in case 5).
+- **Workspace execution:** `call`/`eval` run through the MATLAB **workspace** (inputs
+  bound to `fe_*` temp vars, `[fe_out…] = name(…)` via `eng.eval`, temps cleared).
+  This is what lets a **table/timetable** output cross — the engine cannot return one
+  directly, so `_table_to_dict` decomposes it MATLAB-side (columns read by **index**,
+  never by interpolated name; func/option names validated against `^[A-Za-z]\w*$` as
+  an eval-injection guard). Numeric/struct/char outputs are value-identical to the
+  prior direct-call path (the 5 original gate cases still pass unchanged).
 - **Marshalling notes (CONSTITUTION sec 4):**
-  - Output: MATLAB's natural shape, **no silent reshape** (column stays `(n,1)`).
+  - Output: MATLAB's natural shape, **no silent reshape** (column stays `(n,1)`); a
+    table column is flattened to 1-D in `data` (it is inherently a column).
   - Input: 1-D → MATLAB **row**; pass `(n,1)` for a column (e.g. `y` for Score /
     FSR / FSRaddt). NaN/Inf preserved; indices stay 1-based.
   - `call` reserves only `nargout` / `echo_output` / `options`. FSDA's own `msg`
@@ -79,8 +89,12 @@
   Score 2.5e-12. MATLAB R2026a, matlabengine 26.1.12, Python 3.11.5.
 - [x] #p2 No regression — change is purely additive (`git status`: only
   `code/fsda_engine/` + this spec; no existing file modified) — 2026-06-28
+- [x] #p1 Table/timetable support — `call`/`eval` route through the workspace and
+  decompose tables → dict. Gate case 5 (constructed `array2table`) PASS at 1e-9;
+  all 6 cases PASS. Smoke-tested live `univariatems(y,X)` → dict of 8 ndarray
+  columns + RowNames — the 2 hard exceptions (`avasms`/`univariatems`) now cross — 2026-06-29
 
-### Learnings (2026-06-28)
+### Learnings (2026-06-28, +2026-06-29)
 
 - The four "well-behaved" crossings (numeric / struct / nested struct / char) need
   **zero per-routine code** — generic `to_matlab` / `from_matlab` + a name/value
@@ -92,3 +106,9 @@
   are reserved now.
 - The `1-D → MATLAB row` input convention means a column response must be passed as
   `(n,1)` (e.g. `y.reshape(-1,1)` for Score/FSR/FSRaddt) — the gate relies on it.
+- **A `table`/`timetable` cannot be returned to Python by the engine at all** — it
+  errors at conversion. So coverage of table-output functions required moving `call`
+  onto a workspace round-trip and decomposing the table MATLAB-side (same trick as
+  `getYahoo`). A `toolbox/regression` audit found only `avasms`/`univariatems` return
+  tables; this closed both. Remaining non-generic returns there: struct-arrays /
+  datetime (none in regression) and table *inputs* (functions accept numeric too).
