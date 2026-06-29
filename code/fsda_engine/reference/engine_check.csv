@@ -7,3 +7,5 @@ case,result,max_abs_diff,note
 5 table -> dict,PASS,0.000000e+00,VariableNames + data + RowNames
 6 real table fn (univariatems),PASS,0.000000e+00,"structural: Tsel -> dict, 8 cols x 3 rows"
 7 multivariate (corrNominal),PASS,0.000000e+00,"chi2=4.6875, CramerV=0.0722 vs numpy oracle"
+8 FSM (multivariate FS),PASS,0.000000e+00,mmd tail vs gold
+9 mcd (nargout=2 tuple),PASS,0.000000e+00,"RAW.class='mcd', REW.class='mcdr', cov(3, 3)"

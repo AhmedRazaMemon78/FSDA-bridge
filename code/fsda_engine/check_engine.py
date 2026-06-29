@@ -15,6 +15,8 @@ replaces the per-routine plumbing without a wrapper per routine:
                              robust cols are stochastic, so shape not value)
     7. /multivariate         corrNominal(N) -> struct (w/ table fields) -> chi2 &
                              CramerV vs numpy oracle
+    8. /multivariate FS      FSM(Y) -> struct -> out.mmd tail vs bootstrapped gold
+    9. /multivariate 2-out   [RAW,REW]=mcd(Y) -> tuple of dicts (nargout=2; structural)
 
 Cases 2/4/(+) also gate a real struct field against committed gold read **only**
 from the existing per-target `reference/` folders -- nothing existing is written
@@ -111,6 +113,21 @@ def require_fixture(path: Path, hint: str) -> np.ndarray:
             f"required fixture not found: {path}\n  -> run {hint} first to materialize it."
         )
     return read_csv_matrix(path)
+
+
+def load_or_write_golden(path: Path, matrix: np.ndarray, header: list):
+    """Return (golden, bootstrapped?). Write `matrix` as the golden on first run (the
+    inputs are deterministic), else read it back to compare against — the FSR pattern
+    for routines that have no cheap independent oracle (forward searches)."""
+    if path.exists():
+        return read_csv_matrix(path), False
+    path.parent.mkdir(exist_ok=True)
+    with open(path, "w", newline="") as f:
+        w = csv.writer(f)
+        w.writerow(header)
+        for row in matrix:
+            w.writerow(list(row))
+    return matrix.copy(), True
 
 
 def engine_pkg_version() -> str:
@@ -293,6 +310,61 @@ def case_corrnominal(eng: FsdaEngine) -> dict:
                 f"chi2={chi2:.4f}, CramerV={cramer:.4f} vs numpy oracle")
 
 
+def _fsm_dataset() -> np.ndarray:
+    """Fixed multivariate dataset (seeded numpy is reproducible across runs/platforms):
+    clean trivariate normal with a few clear outliers."""
+    rng = np.random.default_rng(0)
+    Y = rng.standard_normal((40, 3))
+    Y[-3:] += 6.0
+    return Y
+
+
+def case_fsm(eng: FsdaEngine) -> dict:
+    """8. /multivariate forward search: FSM(Y) -> struct (out.mmd ~ FSR's out.mdr).
+
+    No cheap independent oracle (a forward search over FSDA internals), so — like FSR —
+    the gate is the mmd tail vs a bootstrapped gold. Deterministic: the dataset is seeded
+    and `rng(0)` fixes FSM's random initial subset; plots/msg off for a quiet run."""
+    Y = _fsm_dataset()
+    eng.eval("rng(0)", nargout=0)
+    out = eng.call("FSM", Y, plots=0, msg=0)
+    cls = out.get("class") if isinstance(out, dict) else type(out).__name__
+    if cls != "FSM":
+        return gate("8 FSM (multivariate FS)", False, float("inf"), f"expected FSM struct, got {cls!r}")
+    mmd = np.asarray(out["mmd"], dtype=float)
+    if mmd.ndim != 2 or mmd.shape[1] != 2:
+        return gate("8 FSM (multivariate FS)", False, float("inf"), f"mmd shape {mmd.shape}")
+    gold, boot = load_or_write_golden(REFERENCE / "FSM_mmd.csv", mmd, ["step", "mmd"])
+    tail, gtail = mmd[-TAIL:], gold[-TAIL:]
+    same = tail.shape == gtail.shape
+    diff = float(np.max(np.abs(tail - gtail))) if same else float("inf")
+    note = "mmd tail vs gold" + (" (bootstrapped)" if boot else "")
+    return gate("8 FSM (multivariate FS)", same and diff <= TOL, diff, note)
+
+
+def case_mcd(eng: FsdaEngine) -> dict:
+    """9. /multivariate two-output routine: [RAW, REW] = mcd(Y) -> tuple of dicts.
+
+    Validates the nargout=2 marshalling (a Python tuple of two structs). mcd is a
+    resampling estimator; `rng(0)` stabilizes the run and the gate is STRUCTURAL — both
+    structs present with the right class and shapes (loc v-vector, cov v x v)."""
+    Y = _fsm_dataset()
+    v = Y.shape[1]
+    eng.eval("rng(0)", nargout=0)
+    res = eng.call("mcd", Y, nargout=2, plots=0, msg=0)
+    if not (isinstance(res, tuple) and len(res) == 2):
+        return gate("9 mcd (nargout=2 tuple)", False, float("inf"),
+                    f"expected 2-tuple, got {type(res).__name__}")
+    RAW, REW = res
+    ok = (isinstance(RAW, dict) and isinstance(REW, dict)
+          and RAW.get("class") == "mcd" and REW.get("class") == "mcdr"
+          and np.asarray(RAW["loc"]).reshape(-1).shape[0] == v
+          and np.asarray(RAW["cov"]).shape == (v, v))
+    return gate("9 mcd (nargout=2 tuple)", ok, 0.0,
+                f"RAW.class={RAW.get('class')!r}, REW.class={REW.get('class')!r}, "
+                f"cov{np.asarray(RAW['cov']).shape}")
+
+
 def main() -> int:
     fsda_root = sys.argv[1] if len(sys.argv) > 1 else None
     eng = FsdaEngine.start(fsda_root=fsda_root)
@@ -307,6 +379,8 @@ def main() -> int:
             case_table(eng),
             case_univariatems(eng),
             case_corrnominal(eng),
+            case_fsm(eng),
+            case_mcd(eng),
         ]
     finally:
         eng.stop()

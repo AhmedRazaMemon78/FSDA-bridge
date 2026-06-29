@@ -86,6 +86,10 @@
   (Julia + R generic surfaces, both 7/7 PASS) — 2026-06-29
 - [x] #p2 First `/multivariate` spot-check: `corrNominal(N)` crosses correctly (case 7,
   chi2 & CramerV vs numpy oracle, 1e-9). **No engine change needed** — see Learnings — 2026-06-29
+- [x] #p2 More `/multivariate` checks: case 8 `FSM(Y)` (forward search; `out.mmd` tail vs a
+  bootstrapped gold `reference/FSM_mmd.csv`, deterministic via seeded Y + `rng(0)`), case 9
+  `[RAW,REW]=mcd(Y)` (validates the **nargout=2 → tuple of dicts** path; structural,
+  `RAW.class='mcd'`/`REW.class='mcdr'`). All 10 cases PASS — 2026-06-29
 
 - [x] #p1 Write `code/fsda_engine/engine.py` (generic engine + converters) — 2026-06-28
 - [x] #p1 Write `code/fsda_engine/check_engine.py` (four-case + FSRaddt gate) — 2026-06-28
