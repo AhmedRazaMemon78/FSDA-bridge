@@ -11,6 +11,8 @@ replaces the per-routine plumbing without a wrapper per routine:
     (+) routine-agnostic     FSRaddt  -> out["Tdel"] tail   vs committed gold
     5. table -> dict         constructed array2table         -> exact (the path
                              that lets avasms / univariatems cross)
+    6. real table fn         univariatems(y,X) -> Tsel table -> dict (STRUCTURAL:
+                             robust cols are stochastic, so shape not value)
 
 Cases 2/4/(+) also gate a real struct field against committed gold read **only**
 from the existing per-target `reference/` folders -- nothing existing is written
@@ -236,6 +238,33 @@ def case_table(eng: FsdaEngine) -> dict:
     return gate("5 table -> dict", ok, diff, "VariableNames + data + RowNames")
 
 
+def case_univariatems(eng: FsdaEngine) -> dict:
+    """6. real table-returning FSDA fn: univariatems(y, X) -> Tsel (table) -> dict.
+
+    Unlike case 5 (a constructed array2table), this calls a genuine FSDA routine whose
+    output is a MATLAB table. Its robust columns use random subsampling, so the values
+    are not reproducible at 1e-9 -- this is a STRUCTURAL gate (the table decomposed into
+    a well-formed dict), while case 5 stays the exact 1e-9 mechanism proof."""
+    rng = np.random.default_rng(0)
+    n, p = 60, 5
+    X = rng.standard_normal((n, p))
+    # strong signal on cols 0 and 2 -> some variables are reliably selected
+    y = (3.0 * X[:, 0] - 2.0 * X[:, 2] + 0.3 * rng.standard_normal(n)).reshape(-1, 1)
+    try:
+        Tsel = eng.call("univariatems", y, X)        # y as (n,1) column; X (n,p)
+        h = int(Tsel["height"])
+        names, rownames = Tsel["VariableNames"], Tsel["RowNames"]
+        cols_ok = all(isinstance(v, np.ndarray) and v.reshape(-1).shape[0] == h
+                      for v in Tsel["data"].values())
+        ok = (isinstance(Tsel, dict) and isinstance(names, list) and len(names) >= 1
+              and isinstance(rownames, list) and len(rownames) == h and h >= 1 and cols_ok)
+    except (TypeError, KeyError) as exc:
+        return gate("6 real table fn (univariatems)", False, float("inf"),
+                    f"univariatems table did not cross: {exc}")
+    return gate("6 real table fn (univariatems)", ok, 0.0,
+                f"structural: Tsel -> dict, {len(names)} cols x {h} rows")
+
+
 def main() -> int:
     fsda_root = sys.argv[1] if len(sys.argv) > 1 else None
     eng = FsdaEngine.start(fsda_root=fsda_root)
@@ -248,6 +277,7 @@ def main() -> int:
             case_fsr(eng),
             case_fsraddt(eng),
             case_table(eng),
+            case_univariatems(eng),
         ]
     finally:
         eng.stop()

@@ -91,8 +91,9 @@
   `code/fsda_engine/` + this spec; no existing file modified) — 2026-06-28
 - [x] #p1 Table/timetable support — `call`/`eval` route through the workspace and
   decompose tables → dict. Gate case 5 (constructed `array2table`) PASS at 1e-9;
-  all 6 cases PASS. Smoke-tested live `univariatems(y,X)` → dict of 8 ndarray
-  columns + RowNames — the 2 hard exceptions (`avasms`/`univariatems`) now cross — 2026-06-29
+  case 6 calls a **real** table-returning routine `univariatems(y,X)` → `Tsel` dict
+  (8 cols × 3 rows, structural gate; robust cols are stochastic). All 7 cases PASS —
+  the 2 hard exceptions (`avasms`/`univariatems`) now cross — 2026-06-29
 
 ### Learnings (2026-06-28, +2026-06-29)
 
