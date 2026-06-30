@@ -249,6 +249,35 @@ case_triu2vec = function(h) {
   gate("18 utilities (triu2vec)", diff <= TOL, diff, "upper triangle vs oracle")
 }
 
+case_bc = function(h) {
+  c = as.numeric(fsda_call(h, "bc", 12, 5))[1]
+  ref = choose(12, 5)
+  gate("19 combinatorial (bc)", abs(c - ref) <= TOL, abs(c - ref), "C(12,5) vs choose")
+}
+
+case_combsfs = function(h) {
+  v = c(2, 4, 6, 8, 10); m = 3
+  P = as.matrix(fsda_call(h, "combsFS", matrix(v, nrow = 1), m))   # 1 x n row; exercises v -> P
+  ref = t(combn(v, m))                                            # (nCk) x m, lexicographic
+  same = all(dim(P) == dim(ref))
+  diff = if (same) max(abs(P - ref)) else Inf
+  gate("20 combinatorial (combsFS)", same && diff <= TOL, diff,
+       paste0(nrow(P), "x", ncol(P), " combinations vs oracle"))
+}
+
+case_lexunrank = function(h) {
+  n = 6; k = 3; N = 7
+  res = fsda_call(h, "lexunrank", n, k, N, nargout = 2)           # numeric tuple -> list of 2
+  if (!is.list(res) || length(res) != 2) return(gate("21 combinatorial (lexunrank)", FALSE, Inf, "expected 2 outputs"))
+  kcomb = sort(as.numeric(res[[1]]))                              # FSDA orders descending -> sort as set
+  calls = as.numeric(res[[2]])[1]
+  ref = sort(combn(1:n, k)[, choose(n, k) - N])                   # lex position bc(n,k)-N
+  same = length(kcomb) == length(ref)
+  diff = if (same) max(abs(kcomb - ref)) else Inf
+  ok = same && diff <= TOL && is.finite(calls) && calls > 0
+  gate("21 combinatorial (lexunrank)", ok, diff, paste0("kcomb(set) vs oracle; calls=", calls))
+}
+
 main = function() {
   fsda_root = local({ a = commandArgs(trailingOnly = TRUE); if (length(a) >= 1 && nzchar(a[1])) a[1] else NULL })
   h = start_engine(fsda_root = fsda_root)
@@ -261,7 +290,8 @@ main = function() {
             case_pcafs(h), case_cressieread(h),
             case_logfactorial(h), case_tabulatefs(h), case_tbwei(h),
             case_gower(h), case_tclustic(h),
-            case_removeextraspaces(h), case_triu2vec(h))
+            case_removeextraspaces(h), case_triu2vec(h),
+            case_bc(h), case_combsfs(h), case_lexunrank(h))
 
   overall = all(vapply(rs, function(r) r$ok, logical(1)))
   cat("=== spec 018: generic FSDA engine — R surface ===\n")

@@ -257,6 +257,56 @@ function case_triu2vec(h)
     gate("18 utilities (triu2vec)", diff <= TOL, diff, "upper triangle vs oracle")
 end
 
+# lexicographic m-combinations of v (Base only; no Combinatorics dependency)
+function _combinations(v, m)
+    n = length(v)
+    res = Vector{Vector{eltype(v)}}()
+    idx = collect(1:m)
+    while true
+        push!(res, [v[i] for i in idx])
+        i = m
+        while i >= 1 && idx[i] == n - m + i
+            i -= 1
+        end
+        i == 0 && break
+        idx[i] += 1
+        for j in (i + 1):m
+            idx[j] = idx[j - 1] + 1
+        end
+    end
+    return res
+end
+
+function case_bc(h)
+    c = _scal(call(h, "bc", 12.0, 5.0))
+    ref = Float64(binomial(12, 5))
+    gate("19 combinatorial (bc)", abs(c - ref) <= TOL, abs(c - ref), "C(12,5) vs binomial")
+end
+
+function case_combsfs(h)
+    v = [2.0, 4.0, 6.0, 8.0, 10.0]; m = 3
+    P = call(h, "combsFS", reshape(v, 1, :), Float64(m))   # 1 x n row; exercises v -> P mapping
+    ref = permutedims(hcat(_combinations(v, m)...))         # (nCk) x m, lexicographic
+    same = size(P) == size(ref)
+    diff = same ? maximum(abs.(P .- ref)) : Inf
+    gate("20 combinatorial (combsFS)", same && diff <= TOL, diff,
+         "$(size(P, 1))x$(size(P, 2)) combinations vs oracle")
+end
+
+function case_lexunrank(h)
+    n, k, N = 6, 3, 7
+    res = call(h, "lexunrank", Float64(n), Float64(k), Float64(N); nargout = 2)   # numeric tuple
+    (res isa AbstractVector && length(res) == 2) ||
+        return gate("21 combinatorial (lexunrank)", false, Inf, "expected 2 outputs")
+    kcomb = sort(vec(Float64.(res[1])))                     # FSDA orders descending -> sort as set
+    calls = _scal(res[2])
+    ref = sort(_combinations(collect(1.0:n), k)[binomial(n, k) - N])   # lex position bc(n,k)-N
+    same = length(kcomb) == length(ref)
+    diff = same ? maximum(abs.(kcomb .- ref)) : Inf
+    ok = same && diff <= TOL && isfinite(calls) && calls > 0
+    gate("21 combinatorial (lexunrank)", ok, diff, "kcomb(set) vs oracle; calls=$(Int(calls))")
+end
+
 function main()
     fsda_root = length(ARGS) >= 1 && !isempty(ARGS[1]) ? ARGS[1] : nothing
     h = start_engine(fsda_root = fsda_root)
@@ -268,7 +318,8 @@ function main()
               case_pcafs(h), case_cressieread(h),
               case_logfactorial(h), case_tabulatefs(h), case_tbwei(h),
               case_gower(h), case_tclustic(h),
-              case_removeextraspaces(h), case_triu2vec(h)]
+              case_removeextraspaces(h), case_triu2vec(h),
+              case_bc(h), case_combsfs(h), case_lexunrank(h)]
         (d, rs)
     finally
         try; stop_engine(h); catch; end
