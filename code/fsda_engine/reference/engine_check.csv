@@ -14,3 +14,5 @@ case,result,max_abs_diff,note
 12 utilities_stat (logfactorial),PASS,1.776357e-15,log(10!) vs numpy
 13 utilities_stat (tabulateFS),PASS,7.105427e-15,value/count/percent vs numpy
 14 utilities_stat (TBwei),PASS,0.000000e+00,Tukey biweight vs numpy
+15 clustering (GowerIndex),PASS,1.110223e-16,Gower S vs numpy; Stable=table-dict
+16 clustering 2-D cell (tclustIC),PASS,0.000000e+00,IDXCLA 2x8 nested list

@@ -109,6 +109,16 @@
   `grpstatsFS` needs a **table input** → out of scope (not an output gap). Added committed
   cases 12 `logfactorial` (vs numpy), 13 `tabulateFS` ([value,count,percent] vs numpy.unique),
   14 `TBwei` (Tukey biweight vs closed form). All 15 cases PASS — 2026-06-30
+- [x] #p1 **`/clustering` sweep — found a REAL gap; engine FIXED.** 35 functions (struct-heavy:
+  `tclust`/`tkmeans`/`tclustreg`/`MixSim`/`GowerIndex`/…). Sweep: `tclustIC` FAILED with a
+  Python `ValueError: cell arrays returned from MATLAB must be 1-by-N or M-by-1` (NOT a
+  `MatlabExecutionError`) — its `out.IDXCLA`/`IDXMIX` are **2-D cell arrays** the engine can't
+  return. **First genuine marshalling gap in 4 folders.** Fix: `engine.py` now has
+  `_marshal_cell2d` (M×N cell → nested list, element-by-index) + `_marshal_struct` (decompose
+  a struct field-by-field when the engine can't eagerly convert it), wired into `_marshal_var`
+  as a **fallback** (fast whole-value read tried first → no regression; all 15 prior cases
+  still PASS). Added cases 15 `GowerIndex` (Gower S vs numpy + `Stable` table-dict) and 16
+  `tclustIC` (2-D-cell regression guard: `IDXCLA` decomposes to a nested list). All 17 PASS — 2026-06-30
 
 - [x] #p1 Write `code/fsda_engine/engine.py` (generic engine + converters) — 2026-06-28
 - [x] #p1 Write `code/fsda_engine/check_engine.py` (four-case + FSRaddt gate) — 2026-06-28
@@ -154,6 +164,8 @@
   raised *inside MATLAB* (wrong/missing inputs: "Initial subset is missing", "Not enough
   input arguments") — the engine ran the call and faithfully propagated MATLAB's error.
   A real marshalling gap looks different (a Python conversion error, or an opaque return).
-  None occurred, so `/multivariate` needed **no engine change** — the `_marshal_struct`
-  fallback stays unbuilt. Lesson: classify failures by exception origin before "fixing"
-  the engine.
+  None occurred in /regression, /multivariate, /utilities_stat. Lesson: classify failures
+  by exception origin before "fixing" the engine. **/clustering finally produced a real one:**
+  `tclustIC` raised a Python `ValueError` (2-D cell can't be returned) — exactly the
+  non-`MatlabExecutionError` signature — so the `_marshal_cell2d` + `_marshal_struct` fallback
+  was built *then* (driven by evidence, not the earlier corrNominal prediction).

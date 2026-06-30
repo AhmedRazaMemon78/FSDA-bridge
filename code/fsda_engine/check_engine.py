@@ -22,6 +22,8 @@ replaces the per-routine plumbing without a wrapper per routine:
    12. /utilities_stat       logfactorial(n) -> float vs numpy
    13. /utilities_stat       tabulateFS(x) -> [value,count,percent] matrix vs numpy
    14. /utilities_stat       TBwei(u,c) -> Tukey biweight weights vs closed-form numpy
+   15. /clustering           [S,Stable]=GowerIndex(Y) -> S vs numpy + Stable table-dict
+   16. /clustering 2-D cell  tclustIC(Y) -> struct w/ M x N cell fields -> nested lists
 
 Cases 2/4/(+) also gate a real struct field against committed gold read **only**
 from the existing per-target `reference/` folders -- nothing existing is written
@@ -446,6 +448,41 @@ def case_tbwei(eng: FsdaEngine) -> dict:
     return gate("14 utilities_stat (TBwei)", diff <= TOL, diff, "Tukey biweight vs numpy")
 
 
+def case_gower(eng: FsdaEngine) -> dict:
+    """15. /clustering similarity: [S,Stable]=GowerIndex(Y) -> matrix + table. Gate S
+    (continuous-variable Gower: 1 - mean_k |y_ik-y_jk|/range_k) vs numpy at 1e-9, and
+    assert Stable decomposed to a table-dict (nargout=2)."""
+    Y = _fsm_dataset()
+    res = eng.call("GowerIndex", Y, nargout=2)
+    if not (isinstance(res, tuple) and len(res) == 2):
+        return gate("15 clustering (GowerIndex)", False, float("inf"),
+                    f"expected 2-tuple, got {type(res).__name__}")
+    S = np.asarray(res[0], dtype=float)
+    R = Y.max(0) - Y.min(0)
+    Sref = 1.0 - (np.abs(Y[:, None, :] - Y[None, :, :]) / R[None, None, :]).mean(2)
+    diff = float(np.max(np.abs(S - Sref)))
+    stable_ok = isinstance(res[1], dict) and "VariableNames" in res[1]
+    return gate("15 clustering (GowerIndex)", diff <= TOL and stable_ok, diff,
+                f"Gower S vs numpy; Stable={'table-dict' if stable_ok else 'NOT'}")
+
+
+def case_tclustic(eng: FsdaEngine) -> dict:
+    """16. /clustering 2-D cell: tclustIC(Y) -> struct whose IDXCLA/IDXMIX fields are
+    M x N MATLAB cells -- the case that drove the engine's _marshal_cell2d fix (a 2-D cell
+    cannot be returned to Python directly). Structural: they must decompose to *nested*
+    Python lists. rng(0) + a small kk grid for a stable, quick run."""
+    Y = _fsm_dataset()
+    eng.eval("rng(0)", nargout=0)
+    out = eng.call("tclustIC", Y, plots=0, msg=0, options={"kk": [2, 3]})
+    ok = (isinstance(out, dict)
+          and isinstance(out.get("IDXCLA"), list) and len(out["IDXCLA"]) >= 1
+          and isinstance(out["IDXCLA"][0], list)
+          and isinstance(out.get("IDXMIX"), list))
+    detail = (f"IDXCLA {len(out['IDXCLA'])}x{len(out['IDXCLA'][0])} nested list"
+              if ok else "IDXCLA not a nested list")
+    return gate("16 clustering 2-D cell (tclustIC)", ok, 0.0, detail)
+
+
 def main() -> int:
     fsda_root = sys.argv[1] if len(sys.argv) > 1 else None
     eng = FsdaEngine.start(fsda_root=fsda_root)
@@ -467,6 +504,8 @@ def main() -> int:
             case_logfactorial(eng),
             case_tabulatefs(eng),
             case_tbwei(eng),
+            case_gower(eng),
+            case_tclustic(eng),
         ]
     finally:
         eng.stop()

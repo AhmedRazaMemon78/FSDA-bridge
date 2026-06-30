@@ -21,11 +21,16 @@ shapes (see spec 016):
     table / timetable        (cannot return)    -> dict {VariableNames, RowNames
                                                   / RowTimes, data}  (decomposed
                                                   MATLAB-side; see _table_to_dict)
+    2-D cell (M x N)         (cannot return)    -> nested list (see _marshal_cell2d)
+    struct holding any of    (cannot return)    -> dict, decomposed field-by-field
+    the above                                     (see _marshal_struct)
 
-A table/timetable cannot be returned to Python by the engine at all, so `call` runs
-through the MATLAB workspace and decomposes it there -- the same approach
-`code/getYahoo/bridge.py` uses for its timetable. STILL OUT OF SCOPE: struct-ARRAYS
-and datetime/duration scalars (getYahoo keeps its own bespoke bridge for those).
+A table/timetable, a 2-D cell, or a struct *containing* one cannot be returned to Python
+by the engine at all, so `call` runs through the MATLAB workspace and decomposes them
+there (the approach `code/getYahoo/bridge.py` uses for its timetable). The struct/cell
+field-by-field path is a *fallback*: the fast whole-value read is tried first, so ordinary
+structs/numerics are untouched. STILL OUT OF SCOPE: struct-ARRAYS and datetime/duration
+scalars (getYahoo keeps its own bespoke bridge for those).
 
 Marshalling rules (CONSTITUTION sec 4):
   * Output is returned in MATLAB's natural shape -- NO silent reshape. A column
@@ -271,11 +276,60 @@ class FsdaEngine:
             self.eng.eval("clear " + " ".join(names), nargout=0)
 
     def _marshal_var(self, vn: str):
-        """Marshal one workspace variable: a table/timetable -> dict (decomposed
-        MATLAB-side); anything else read out and passed through `from_matlab`."""
+        """Marshal one workspace variable. table/timetable -> dict (decomposed
+        MATLAB-side); a 2-D cell -> nested list (the engine only returns 1-D cells);
+        otherwise read it out and pass through `from_matlab`. If that direct read
+        fails (e.g. a struct containing a field the engine cannot convert), fall back
+        to decomposing the struct/cell field-by-field MATLAB-side."""
         if int(self.eng.eval(f"double(istable({vn})||istimetable({vn}))", nargout=1)):
             return self._table_to_dict(vn)
-        return from_matlab(self.eng.workspace[vn])
+        if int(self.eng.eval(
+                f"double(iscell({vn}) && ~isrow({vn}) && ~iscolumn({vn}))", nargout=1)):
+            return self._marshal_cell2d(vn)        # M x N cell: engine can't return it
+        try:
+            return from_matlab(self.eng.workspace[vn])
+        except Exception:
+            if int(self.eng.eval(f"double(isstruct({vn}))", nargout=1)):
+                return self._marshal_struct(vn)
+            if int(self.eng.eval(f"double(iscell({vn}))", nargout=1)):
+                return self._marshal_cell2d(vn)
+            raise
+
+    def _marshal_struct(self, vn: str) -> dict:
+        """Decompose a struct field-by-field MATLAB-side (used when the engine cannot
+        eagerly convert the whole struct -- e.g. it holds a 2-D cell or table field).
+        Each field is routed back through `_marshal_var`, so tables/2-D cells/nested
+        structs are handled recursively. The function ran once already; this only
+        re-reads its result carefully."""
+        fields = _cellstr_list(self.eng.eval(f"fieldnames({vn})", nargout=1))
+        out = {}
+        for f in fields:
+            if not _IDENT_RE.match(f):             # fieldnames are valid idents; guard anyway
+                raise ValueError(f"unsafe struct field name: {f!r}")
+            self.eng.eval(f"fe_fld = {vn}.{f};", nargout=0)
+            try:
+                out[f] = self._marshal_var("fe_fld")
+            finally:
+                self._clear(["fe_fld"])
+        return out
+
+    def _marshal_cell2d(self, vn: str) -> list:
+        """Decompose an M x N MATLAB cell into a nested Python list (the engine only
+        returns 1-by-N / M-by-1 cells). Each element is read by index and routed
+        through `_marshal_var`, so cells of matrices / structs / tables all cross."""
+        m = int(self.eng.eval(f"double(size({vn},1))", nargout=1))
+        n = int(self.eng.eval(f"double(size({vn},2))", nargout=1))
+        rows = []
+        for i in range(1, m + 1):
+            row = []
+            for j in range(1, n + 1):
+                self.eng.eval(f"fe_cel = {vn}{{{i},{j}}};", nargout=0)
+                try:
+                    row.append(self._marshal_var("fe_cel"))
+                finally:
+                    self._clear(["fe_cel"])
+            rows.append(row)
+        return rows
 
     def _table_to_dict(self, vn: str) -> dict:
         """Decompose a MATLAB table/timetable workspace var into a Python dict.
