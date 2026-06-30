@@ -21,3 +21,4 @@ case,result,max_abs_diff,note
 19 combinatorial (bc),PASS,0.000000e+00,"C(12,5)=792 vs math.comb"
 20 combinatorial (combsFS),PASS,0.000000e+00,10x3 combinations vs itertools
 21 combinatorial (lexunrank),PASS,0.000000e+00,kcomb(set) vs itertools; calls=9
+22 utilities_help (publishFS),PASS,0.000000e+00,"titl='mahalFS'; InpArgs names=['Y', 'MU', 'SIGMA']"

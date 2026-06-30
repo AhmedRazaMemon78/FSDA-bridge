@@ -30,6 +30,8 @@ replaces the per-routine plumbing without a wrapper per routine:
    20. /combinatorial        combsFS(v,m) -> matrix of m-combinations vs itertools
    21. /combinatorial 2-out  [kcomb,calls]=lexunrank(n,k,N) -> numeric tuple; kcomb (as a
                              set) vs itertools lexicographic oracle (nargout=2)
+   22. /utilities_help       publishFS(file) -> struct (help parser): strings + 2-D-cell
+                             InpArgs/OutArgs + empty MException laste -> dict
 
 Cases 2/4/(+) also gate a real struct field against committed gold read **only**
 from the existing per-target `reference/` folders -- nothing existing is written
@@ -555,6 +557,31 @@ def case_lexunrank(eng: FsdaEngine) -> dict:
                 f"kcomb(set) vs itertools; calls={calls:.0f}")
 
 
+def case_publishfs(eng: FsdaEngine) -> dict:
+    """22. /utilities_help help parser: publishFS(file) parses an FSDA .m help header into a
+    struct -> dict. The help-build-tooling crossing: one struct carrying strings + a 2-D cell
+    arg table (`InpArgs` -> 3x8 nested list via _marshal_cell2d) + a column-cell `OutArgs` +
+    an (empty) MException `laste` field, all marshalled together. write2file/evalCode off =>
+    pure parse (no disk write, no code eval); ErrWrngSeeAlso off silences See-Also doc-
+    reference validation. Stable oracle: mahalFS's signature `d = mahalFS(Y,MU,SIGMA)`."""
+    out = eng.call("publishFS", "mahalFS", write2file=False, evalCode=False,
+                   Display="none", ErrWrngSeeAlso=False)
+    if not isinstance(out, dict):
+        return gate("22 utilities_help (publishFS)", False, float("inf"),
+                    f"expected dict, got {type(out).__name__}")
+    inp = out.get("InpArgs")
+    in_names = ([r[0] for r in inp]
+                if isinstance(inp, list) and inp and isinstance(inp[0], list) else None)
+    outa = out.get("OutArgs")
+    out_first = outa[0] if isinstance(outa, list) and outa else None
+    ok = (out.get("titl") == "mahalFS"
+          and in_names == ["Y", "MU", "SIGMA"]
+          and out_first == "d"
+          and out.get("laste") == "")
+    return gate("22 utilities_help (publishFS)", ok, 0.0 if ok else float("inf"),
+                f"titl={out.get('titl')!r}; InpArgs names={in_names}")
+
+
 def main() -> int:
     fsda_root = sys.argv[1] if len(sys.argv) > 1 else None
     eng = FsdaEngine.start(fsda_root=fsda_root)
@@ -583,6 +610,7 @@ def main() -> int:
             case_bc(eng),
             case_combsfs(eng),
             case_lexunrank(eng),
+            case_publishfs(eng),
         ]
     finally:
         eng.stop()

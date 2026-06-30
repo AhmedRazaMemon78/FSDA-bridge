@@ -137,6 +137,22 @@
   of m-combinations vs `itertools`, exercises the v→P value-mapping), and 21 `lexunrank`
   (**nargout=2 plain-numeric tuple** — first such; oracle = `bc(n,k)-N` lexicographic combo,
   compared as a sorted set since FSDA orders `kcomb` descending). All 21 cases PASS — 2026-06-30
+- [x] #p1 **`/utilities_help` sweep — engine needs NO change.** 13 routines — the FSDA
+  help-build tooling (`publishFS`, `mreadFS`, `xmlcreateFS`/`xmlreadFS`/`xmlwriteFS`,
+  `makecontentsfileFS`, `publishFunctionAlpha`/`Cate`, `publishBibliography`,
+  `setToolboxStartEnd`, `CreateFSDAhelpFiles`, `htmlwriteFS`). Mostly file-I/O / HTML-XML
+  side-effecting build steps (out of scope like `getYahoo`); `mreadFS` is marked OBSOLETE.
+  Engine-relevant probe: **`publishFS('mahalFS', write2file=false, evalCode=false)` fully
+  marshals its 16-field output struct → dict** — strings + a **2-D-cell arg table**
+  (`InpArgs` → 3×8 nested list via `_marshal_cell2d`) + a column-cell `OutArgs` + an (empty)
+  **MException `laste`** field, all in one struct, no gap. First failure was a
+  `MatlabExecutionError` ("cannot find doc file mahal.html") from See-Also validation, not a
+  marshalling gap → silenced with `ErrWrngSeeAlso=false` (classify by exception origin).
+  `xmlcreateFS` also crosses (`docNode`→ndarray, `docNodechr`→str; no disk write). Added case
+  22 `publishFS` (struct → dict; oracle = mahalFS's signature `d=mahalFS(Y,MU,SIGMA)`:
+  `titl=='mahalFS'`, `InpArgs` names `['Y','MU','SIGMA']`, `OutArgs[0]=='d'`, `laste==''`).
+  One check is proportionate — `publishFS` is the lone clean engine-relevant routine in a
+  tooling folder. All 22 cases PASS — 2026-06-30
 
 - [x] #p1 Write `code/fsda_engine/engine.py` (generic engine + converters) — 2026-06-28
 - [x] #p1 Write `code/fsda_engine/check_engine.py` (four-case + FSRaddt gate) — 2026-06-28
