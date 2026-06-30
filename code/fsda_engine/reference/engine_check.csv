@@ -9,3 +9,5 @@ case,result,max_abs_diff,note
 7 multivariate (corrNominal),PASS,0.000000e+00,"chi2=4.6875, CramerV=0.0722 vs numpy oracle"
 8 FSM (multivariate FS),PASS,0.000000e+00,mmd tail vs gold
 9 mcd (nargout=2 tuple),PASS,0.000000e+00,"RAW.class='mcd', REW.class='mcdr', cov(3, 3)"
+10 multivariate (pcaFS),PASS,6.106227e-16,explained eigenvalues vs numpy corr
+11 multivariate (CressieRead),PASS,0.000000e+00,PD=4.7540 vs numpy oracle

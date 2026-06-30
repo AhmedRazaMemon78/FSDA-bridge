@@ -17,6 +17,8 @@ replaces the per-routine plumbing without a wrapper per routine:
                              CramerV vs numpy oracle
     8. /multivariate FS      FSM(Y) -> struct -> out.mmd tail vs bootstrapped gold
     9. /multivariate 2-out   [RAW,REW]=mcd(Y) -> tuple of dicts (nargout=2; structural)
+   10. /multivariate PCA     pcaFS(Y) -> struct -> explained eigenvalues vs numpy corr
+   11. /multivariate divrg   [PD,pval]=CressieRead(N) -> PD vs numpy oracle (lambda=2/3)
 
 Cases 2/4/(+) also gate a real struct field against committed gold read **only**
 from the existing per-target `reference/` folders -- nothing existing is written
@@ -376,6 +378,38 @@ def case_mcd(eng: FsdaEngine) -> dict:
                 f"cov{np.asarray(RAW['cov']).shape}")
 
 
+def case_pcafs(eng: FsdaEngine) -> dict:
+    """10. /multivariate PCA: pcaFS(Y) -> struct. `out.explained[:,0]` are the eigenvalues
+    of the *correlation* matrix (standardize defaults true) -> gated vs numpy at 1e-9.
+    Deterministic (no subsampling); reuses the committed FSM_Y fixture."""
+    Y = _fsm_dataset()
+    out = eng.call("pcaFS", Y, plots=0)
+    if not isinstance(out, dict):
+        return gate("10 multivariate (pcaFS)", False, float("inf"), f"expected dict, got {type(out).__name__}")
+    expl = np.asarray(out["explained"], dtype=float)
+    eig_ref = np.sort(np.linalg.eigvalsh(np.corrcoef(Y, rowvar=False)))[::-1]
+    diff = float(np.max(np.abs(expl[:, 0] - eig_ref)))
+    return gate("10 multivariate (pcaFS)", diff <= TOL, diff, "explained eigenvalues vs numpy corr")
+
+
+def case_cressieread(eng: FsdaEngine) -> dict:
+    """11. /multivariate power-divergence: [PD,pval]=CressieRead(N) -> tuple. Gate PD
+    (default family parameter lambda=2/3) vs a numpy oracle at 1e-9. CressieRead has no
+    'plots' option, so none is passed."""
+    N = np.array([[10., 20., 30.], [40., 50., 60.], [70., 80., 90.]])
+    res = eng.call("CressieRead", N, nargout=2)
+    if not (isinstance(res, tuple) and len(res) == 2):
+        return gate("11 multivariate (CressieRead)", False, float("inf"),
+                    f"expected 2-tuple, got {type(res).__name__}")
+    PD = float(np.asarray(res[0]))
+    rt = N.sum(1, keepdims=True); ct = N.sum(0, keepdims=True); tot = N.sum()
+    E = rt @ ct / tot
+    la = 2.0 / 3.0
+    PD_ref = float((2.0 / (la * (la + 1.0))) * np.sum(N * ((N / E) ** la - 1.0)))
+    diff = abs(PD - PD_ref)
+    return gate("11 multivariate (CressieRead)", diff <= TOL, diff, f"PD={PD:.4f} vs numpy oracle")
+
+
 def main() -> int:
     fsda_root = sys.argv[1] if len(sys.argv) > 1 else None
     eng = FsdaEngine.start(fsda_root=fsda_root)
@@ -392,6 +426,8 @@ def main() -> int:
             case_corrnominal(eng),
             case_fsm(eng),
             case_mcd(eng),
+            case_pcafs(eng),
+            case_cressieread(eng),
         ]
     finally:
         eng.stop()

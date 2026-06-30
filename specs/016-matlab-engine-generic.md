@@ -90,6 +90,17 @@
   bootstrapped gold `reference/FSM_mmd.csv`, deterministic via seeded Y + `rng(0)`), case 9
   `[RAW,REW]=mcd(Y)` (validates the **nargout=2 → tuple of dicts** path; structural,
   `RAW.class='mcd'`/`REW.class='mcdr'`). All 10 cases PASS — 2026-06-29
+- [x] #p1 **Full `/multivariate` sweep — engine needs NO change.** Ran every function
+  (47) through the generic engine: **26/26 marshallable ones CROSS** — struct→dict,
+  two-struct→`tuple` of dicts (`mcd`/`mcdeda`/`mve`/`mveeda`/`mcdCorAna`), mixed
+  `tuple(ndarray,dict)` (`mdMARsimulate`), bare numeric (`unibiv`/`barnardtest`/
+  `CressieRead`), big contingency structs with table fields (`CorAna` dict[45],
+  `corrNominal`/`corrOrdinal`/`SparseTableTest`). The 14 "failures" were all
+  `MatlabExecutionError` from *my* inputs ("Initial subset is missing", "Not enough input
+  arguments", …) — **not** marshalling gaps. GUI/script (`biplotFS`/`geoplotFS`/
+  `champagneCode`) + chained helpers (`FSMinvmmd`/`mdPartialMD2full`/`FSCorAnaenv`) out of
+  scope. Added committed cases 10 `pcaFS` (eigenvalues vs numpy corr) and 11 `CressieRead`
+  (PD, λ=2/3, vs numpy). All 12 cases PASS — 2026-06-30
 
 - [x] #p1 Write `code/fsda_engine/engine.py` (generic engine + converters) — 2026-06-28
 - [x] #p1 Write `code/fsda_engine/check_engine.py` (four-case + FSRaddt gate) — 2026-06-28
@@ -130,3 +141,11 @@
   (A predicted "struct-with-table errors" fix was investigated and **not** built — the
   empirical check disproved the premise.) corrNominal's matrix-vs-table *input* makes no
   numeric difference (the table input only supplies labels).
+- **Sweeping a folder: distinguish `MatlabExecutionError` from marshalling gaps.** The full
+  `/multivariate` sweep had 14 "failures", but every one was a `MatlabExecutionError`
+  raised *inside MATLAB* (wrong/missing inputs: "Initial subset is missing", "Not enough
+  input arguments") — the engine ran the call and faithfully propagated MATLAB's error.
+  A real marshalling gap looks different (a Python conversion error, or an opaque return).
+  None occurred, so `/multivariate` needed **no engine change** — the `_marshal_struct`
+  fallback stays unbuilt. Lesson: classify failures by exception origin before "fixing"
+  the engine.
