@@ -210,6 +210,31 @@ case_tbwei = function(h) {
   gate("14 utilities_stat (TBwei)", diff <= TOL, diff, "Tukey biweight vs oracle")
 }
 
+case_gower = function(h) {
+  Y = read_matrix(REFERENCE, "FSM_Y.csv")
+  res = fsda_call(h, "GowerIndex", Y, nargout = 2)
+  if (!is.list(res) || length(res) != 2) return(gate("15 clustering (GowerIndex)", FALSE, Inf, "expected 2 outputs"))
+  S = as.matrix(res[[1]])
+  R = apply(Y, 2, max) - apply(Y, 2, min)
+  n = nrow(Y); p = ncol(Y); Sref = matrix(0, n, n)
+  for (i in 1:n) for (j in 1:n) Sref[i, j] = 1 - sum(abs(Y[i, ] - Y[j, ]) / R) / p
+  diff = max(abs(S - Sref))
+  stable_ok = is.list(res[[2]]) && "VariableNames" %in% names(res[[2]])
+  gate("15 clustering (GowerIndex)", diff <= TOL && stable_ok, diff,
+       paste0("Gower S vs oracle; Stable=", if (stable_ok) "table-dict" else "NOT"))
+}
+
+case_tclustic = function(h) {
+  Y = read_matrix(REFERENCE, "FSM_Y.csv")
+  eval_m(h, "rng(0)", nargout = 0)
+  out = fsda_call(h, "tclustIC", Y, plots = 0, msg = 0, kk = c(2, 3))   # 2-D cell -> nested list
+  ok = is.list(out) && !is.null(out$IDXCLA) && is.list(out$IDXCLA) &&
+       length(out$IDXCLA) >= 1 && is.list(out$IDXCLA[[1]]) &&
+       !is.null(out$IDXMIX) && is.list(out$IDXMIX)
+  detail = if (ok) paste0("IDXCLA ", length(out$IDXCLA), "x", length(out$IDXCLA[[1]]), " nested list") else "IDXCLA not nested"
+  gate("16 clustering 2-D cell (tclustIC)", ok, 0.0, detail)
+}
+
 main = function() {
   fsda_root = local({ a = commandArgs(trailingOnly = TRUE); if (length(a) >= 1 && nzchar(a[1])) a[1] else NULL })
   h = start_engine(fsda_root = fsda_root)
@@ -220,7 +245,8 @@ main = function() {
             case_fsraddt(h), case_table(h), case_univariatems(h),
             case_corrnominal(h), case_fsm(h), case_mcd(h),
             case_pcafs(h), case_cressieread(h),
-            case_logfactorial(h), case_tabulatefs(h), case_tbwei(h))
+            case_logfactorial(h), case_tabulatefs(h), case_tbwei(h),
+            case_gower(h), case_tclustic(h))
 
   overall = all(vapply(rs, function(r) r$ok, logical(1)))
   cat("=== spec 018: generic FSDA engine — R surface ===\n")

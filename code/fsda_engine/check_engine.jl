@@ -216,6 +216,33 @@ function case_tbwei(h)
     gate("14 utilities_stat (TBwei)", diff <= TOL, diff, "Tukey biweight vs oracle")
 end
 
+function case_gower(h)
+    Y = read_csv(joinpath(REFERENCE, "FSM_Y.csv"))
+    res = call(h, "GowerIndex", Y; nargout = 2)
+    (res isa AbstractVector && length(res) == 2) ||
+        return gate("15 clustering (GowerIndex)", false, Inf, "expected 2 outputs")
+    S = res[1]
+    R = vec(maximum(Y, dims = 1) .- minimum(Y, dims = 1))
+    n, p = size(Y)
+    Sref = [1 - sum(abs.(Y[i, :] .- Y[j, :]) ./ R) / p for i in 1:n, j in 1:n]
+    diff = maximum(abs.(S .- Sref))
+    stable_ok = (res[2] isa Dict) && haskey(res[2], "VariableNames")
+    gate("15 clustering (GowerIndex)", diff <= TOL && stable_ok, diff,
+         "Gower S vs oracle; Stable=$(stable_ok ? "table-dict" : "NOT")")
+end
+
+function case_tclustic(h)
+    Y = read_csv(joinpath(REFERENCE, "FSM_Y.csv"))
+    eval_expr(h, "rng(0)"; nargout = 0)
+    out = call(h, "tclustIC", Y; plots = 0, msg = 0, kk = [2.0, 3.0])   # 2-D cell -> nested list
+    ok = (out isa Dict) && haskey(out, "IDXCLA") && (out["IDXCLA"] isa AbstractVector) &&
+         !isempty(out["IDXCLA"]) && (out["IDXCLA"][1] isa AbstractVector) &&
+         haskey(out, "IDXMIX") && (out["IDXMIX"] isa AbstractVector)
+    detail = ok ? "IDXCLA $(length(out["IDXCLA"]))x$(length(out["IDXCLA"][1])) nested list" :
+                  "IDXCLA not a nested list"
+    gate("16 clustering 2-D cell (tclustIC)", ok, 0.0, detail)
+end
+
 function main()
     fsda_root = length(ARGS) >= 1 && !isempty(ARGS[1]) ? ARGS[1] : nothing
     h = start_engine(fsda_root = fsda_root)
@@ -225,7 +252,8 @@ function main()
               case_fsraddt(h), case_table(h), case_univariatems(h),
               case_corrnominal(h), case_fsm(h), case_mcd(h),
               case_pcafs(h), case_cressieread(h),
-              case_logfactorial(h), case_tabulatefs(h), case_tbwei(h)]
+              case_logfactorial(h), case_tabulatefs(h), case_tbwei(h),
+              case_gower(h), case_tclustic(h)]
         (d, rs)
     finally
         try; stop_engine(h); catch; end
