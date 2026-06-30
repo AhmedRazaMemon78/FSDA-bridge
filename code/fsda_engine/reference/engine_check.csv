@@ -16,3 +16,5 @@ case,result,max_abs_diff,note
 14 utilities_stat (TBwei),PASS,0.000000e+00,Tukey biweight vs numpy
 15 clustering (GowerIndex),PASS,1.110223e-16,Gower S vs numpy; Stable=table-dict
 16 clustering 2-D cell (tclustIC),PASS,0.000000e+00,IDXCLA 2x8 nested list
+17 utilities (removeExtraSpacesLF),PASS,0.000000e+00,str -> str: 'a b c d'
+18 utilities (triu2vec),PASS,0.000000e+00,upper triangle vs numpy

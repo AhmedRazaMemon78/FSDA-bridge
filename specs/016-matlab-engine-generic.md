@@ -119,6 +119,15 @@
   as a **fallback** (fast whole-value read tried first → no regression; all 15 prior cases
   still PASS). Added cases 15 `GowerIndex` (Gower S vs numpy + `Stable` table-dict) and 16
   `tclustIC` (2-D-cell regression guard: `IDXCLA` decomposes to a nested list). All 17 PASS — 2026-06-30
+- [x] #p1 **`/utilities` sweep — engine needs NO change.** 60 files, mostly non-statistical
+  (web/file/notebook/string utilities + the author's `esercizio_*` teaching scripts). Web/
+  financial fns (`getYahoo*`/`getFundamentals`/`getTickers`) are network-bound timetable/
+  struct-array returns → out of scope like `getYahoo`; table-input fns (`rows2varsFS`/
+  `tabledisp`) out of scope. Focused sweep of the engine-relevant candidates: **5/5 CROSS** —
+  incl. the **first positional STRING input → string output** (`removeExtraSpacesLF`,
+  `wraptextFS`), `findFile` → `list[str]` (cell of strings), and numeric (`triu2vec`,
+  `zscoreFS`). Added cases 17 `removeExtraSpacesLF` (str I/O) and 18 `triu2vec` (upper-triangle
+  vs numpy). All 18 cases PASS — 2026-06-30
 
 - [x] #p1 Write `code/fsda_engine/engine.py` (generic engine + converters) — 2026-06-28
 - [x] #p1 Write `code/fsda_engine/check_engine.py` (four-case + FSRaddt gate) — 2026-06-28

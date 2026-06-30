@@ -24,6 +24,8 @@ replaces the per-routine plumbing without a wrapper per routine:
    14. /utilities_stat       TBwei(u,c) -> Tukey biweight weights vs closed-form numpy
    15. /clustering           [S,Stable]=GowerIndex(Y) -> S vs numpy + Stable table-dict
    16. /clustering 2-D cell  tclustIC(Y) -> struct w/ M x N cell fields -> nested lists
+   17. /utilities str I/O    removeExtraSpacesLF(txt) -> str (positional string input)
+   18. /utilities numeric    triu2vec(A,1) -> upper-triangle elements vs numpy
 
 Cases 2/4/(+) also gate a real struct field against committed gold read **only**
 from the existing per-target `reference/` folders -- nothing existing is written
@@ -483,6 +485,25 @@ def case_tclustic(eng: FsdaEngine) -> dict:
     return gate("16 clustering 2-D cell (tclustIC)", ok, 0.0, detail)
 
 
+def case_removeextraspaces(eng: FsdaEngine) -> dict:
+    """17. /utilities string I/O: removeExtraSpacesLF(txt) collapses runs of spaces. First
+    check of a positional STRING input -> string output."""
+    s = eng.call("removeExtraSpacesLF", "a   b    c  d")
+    ok = (s == "a b c d")
+    return gate("17 utilities (removeExtraSpacesLF)", ok, 0.0 if ok else float("inf"),
+                f"str -> str: {s!r}")
+
+
+def case_triu2vec(eng: FsdaEngine) -> dict:
+    """18. /utilities numeric: triu2vec(A,1) -> strictly-upper-triangle elements, vs numpy."""
+    A = np.array([[1., 2, 3], [4, 5, 6], [7, 8, 9]])
+    y = np.asarray(eng.call("triu2vec", A, 1), dtype=float).reshape(-1)
+    ref = A[np.triu_indices(3, 1)]
+    same = y.shape == ref.shape
+    diff = float(np.max(np.abs(y - ref))) if same else float("inf")
+    return gate("18 utilities (triu2vec)", same and diff <= TOL, diff, "upper triangle vs numpy")
+
+
 def main() -> int:
     fsda_root = sys.argv[1] if len(sys.argv) > 1 else None
     eng = FsdaEngine.start(fsda_root=fsda_root)
@@ -506,6 +527,8 @@ def main() -> int:
             case_tbwei(eng),
             case_gower(eng),
             case_tclustic(eng),
+            case_removeextraspaces(eng),
+            case_triu2vec(eng),
         ]
     finally:
         eng.stop()
