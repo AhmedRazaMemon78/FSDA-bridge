@@ -185,6 +185,31 @@ case_cressieread = function(h) {
   gate("11 multivariate (CressieRead)", diff <= TOL, diff, "PD vs oracle")
 }
 
+case_logfactorial = function(h) {
+  lf = as.numeric(fsda_call(h, "logfactorial", 10))[1]
+  ref = sum(log(1:10))
+  gate("12 utilities_stat (logfactorial)", abs(lf - ref) <= TOL, abs(lf - ref), "log(10!) vs oracle")
+}
+
+case_tabulatefs = function(h) {
+  x = c(1, 1, 2, 3, 3, 3)
+  tb = as.matrix(fsda_call(h, "tabulateFS", x))   # (3,3) [value, count, percent]
+  cnts = as.numeric(table(x))
+  ref = cbind(sort(unique(x)), cnts, cnts / length(x) * 100)
+  same = all(dim(tb) == dim(ref))
+  diff = if (same) max(abs(tb - ref)) else Inf
+  gate("13 utilities_stat (tabulateFS)", same && diff <= TOL, diff, "value/count/percent vs oracle")
+}
+
+case_tbwei = function(h) {
+  u = matrix(c(-3, -1, 0, 0.5, 2, 5), ncol = 1); c = 4.685
+  w = as.numeric(fsda_call(h, "TBwei", u, c))
+  uu = as.numeric(u)
+  ref = ifelse(abs(uu) <= c, (1 - (uu / c)^2)^2, 0)
+  diff = max(abs(w - ref))
+  gate("14 utilities_stat (TBwei)", diff <= TOL, diff, "Tukey biweight vs oracle")
+}
+
 main = function() {
   fsda_root = local({ a = commandArgs(trailingOnly = TRUE); if (length(a) >= 1 && nzchar(a[1])) a[1] else NULL })
   h = start_engine(fsda_root = fsda_root)
@@ -194,7 +219,8 @@ main = function() {
   rs = list(case_numeric(h), case_struct(h), case_nested(h), case_fsr(h),
             case_fsraddt(h), case_table(h), case_univariatems(h),
             case_corrnominal(h), case_fsm(h), case_mcd(h),
-            case_pcafs(h), case_cressieread(h))
+            case_pcafs(h), case_cressieread(h),
+            case_logfactorial(h), case_tabulatefs(h), case_tbwei(h))
 
   overall = all(vapply(rs, function(r) r$ok, logical(1)))
   cat("=== spec 018: generic FSDA engine — R surface ===\n")

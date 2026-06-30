@@ -190,6 +190,32 @@ function case_cressieread(h)
     gate("11 multivariate (CressieRead)", diff <= TOL, diff, "PD vs oracle")
 end
 
+function case_logfactorial(h)
+    lf = _scal(call(h, "logfactorial", 10.0))
+    ref = sum(log.(1:10))
+    gate("12 utilities_stat (logfactorial)", abs(lf - ref) <= TOL, abs(lf - ref), "log(10!) vs oracle")
+end
+
+function case_tabulatefs(h)
+    x = [1.0, 1, 2, 3, 3, 3]
+    tb = call(h, "tabulateFS", x)                 # (3,3) Matrix [value, count, percent]
+    vals = sort(unique(x))
+    cnts = Float64[count(==(v), x) for v in vals]
+    ref = hcat(vals, cnts, cnts ./ length(x) .* 100)
+    same = size(tb) == size(ref)
+    diff = same ? maximum(abs.(tb .- ref)) : Inf
+    gate("13 utilities_stat (tabulateFS)", same && diff <= TOL, diff, "value/count/percent vs oracle")
+end
+
+function case_tbwei(h)
+    u = reshape([-3.0, -1, 0, 0.5, 2, 5], :, 1); c = 4.685
+    w = vec(call(h, "TBwei", u, c))
+    uu = vec(u)
+    ref = ifelse.(abs.(uu) .<= c, (1 .- (uu ./ c) .^ 2) .^ 2, 0.0)
+    diff = maximum(abs.(w .- ref))
+    gate("14 utilities_stat (TBwei)", diff <= TOL, diff, "Tukey biweight vs oracle")
+end
+
 function main()
     fsda_root = length(ARGS) >= 1 && !isempty(ARGS[1]) ? ARGS[1] : nothing
     h = start_engine(fsda_root = fsda_root)
@@ -198,7 +224,8 @@ function main()
         rs = [case_numeric(h), case_struct(h), case_nested(h), case_fsr(h),
               case_fsraddt(h), case_table(h), case_univariatems(h),
               case_corrnominal(h), case_fsm(h), case_mcd(h),
-              case_pcafs(h), case_cressieread(h)]
+              case_pcafs(h), case_cressieread(h),
+              case_logfactorial(h), case_tabulatefs(h), case_tbwei(h)]
         (d, rs)
     finally
         try; stop_engine(h); catch; end
