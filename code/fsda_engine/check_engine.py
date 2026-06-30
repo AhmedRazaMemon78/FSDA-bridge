@@ -19,6 +19,9 @@ replaces the per-routine plumbing without a wrapper per routine:
     9. /multivariate 2-out   [RAW,REW]=mcd(Y) -> tuple of dicts (nargout=2; structural)
    10. /multivariate PCA     pcaFS(Y) -> struct -> explained eigenvalues vs numpy corr
    11. /multivariate divrg   [PD,pval]=CressieRead(N) -> PD vs numpy oracle (lambda=2/3)
+   12. /utilities_stat       logfactorial(n) -> float vs numpy
+   13. /utilities_stat       tabulateFS(x) -> [value,count,percent] matrix vs numpy
+   14. /utilities_stat       TBwei(u,c) -> Tukey biweight weights vs closed-form numpy
 
 Cases 2/4/(+) also gate a real struct field against committed gold read **only**
 from the existing per-target `reference/` folders -- nothing existing is written
@@ -410,6 +413,39 @@ def case_cressieread(eng: FsdaEngine) -> dict:
     return gate("11 multivariate (CressieRead)", diff <= TOL, diff, f"PD={PD:.4f} vs numpy oracle")
 
 
+def case_logfactorial(eng: FsdaEngine) -> dict:
+    """12. /utilities_stat scalar: logfactorial(n) = log(n!) -> float, vs numpy oracle."""
+    n = 10
+    lf = float(np.asarray(eng.call("logfactorial", float(n))))
+    ref = float(np.sum(np.log(np.arange(1, n + 1))))
+    diff = abs(lf - ref)
+    return gate("12 utilities_stat (logfactorial)", diff <= TOL, diff, f"log({n}!) vs numpy")
+
+
+def case_tabulatefs(eng: FsdaEngine) -> dict:
+    """13. /utilities_stat frequency: tabulateFS(x) -> [value, count, percent] matrix,
+    vs numpy.unique counts."""
+    x = np.array([1., 1, 2, 3, 3, 3])
+    tb = np.asarray(eng.call("tabulateFS", x), dtype=float)
+    vals, cnts = np.unique(x, return_counts=True)
+    ref = np.column_stack([vals, cnts, cnts / x.size * 100.0])
+    same = tb.shape == ref.shape
+    diff = float(np.max(np.abs(tb - ref))) if same else float("inf")
+    return gate("13 utilities_stat (tabulateFS)", same and diff <= TOL, diff, "value/count/percent vs numpy")
+
+
+def case_tbwei(eng: FsdaEngine) -> dict:
+    """14. /utilities_stat robust weight: TBwei(u,c) = Tukey biweight (1-(u/c)^2)^2 for
+    |u|<=c else 0, vs a closed-form numpy oracle."""
+    u = np.array([-3., -1, 0, 0.5, 2, 5]).reshape(-1, 1)
+    c = 4.685
+    w = np.asarray(eng.call("TBwei", u, c), dtype=float).reshape(-1)
+    uu = u.reshape(-1)
+    ref = np.where(np.abs(uu) <= c, (1 - (uu / c) ** 2) ** 2, 0.0)
+    diff = float(np.max(np.abs(w - ref)))
+    return gate("14 utilities_stat (TBwei)", diff <= TOL, diff, "Tukey biweight vs numpy")
+
+
 def main() -> int:
     fsda_root = sys.argv[1] if len(sys.argv) > 1 else None
     eng = FsdaEngine.start(fsda_root=fsda_root)
@@ -428,6 +464,9 @@ def main() -> int:
             case_mcd(eng),
             case_pcafs(eng),
             case_cressieread(eng),
+            case_logfactorial(eng),
+            case_tabulatefs(eng),
+            case_tbwei(eng),
         ]
     finally:
         eng.stop()

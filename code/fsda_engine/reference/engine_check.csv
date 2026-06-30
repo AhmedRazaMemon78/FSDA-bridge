@@ -11,3 +11,6 @@ case,result,max_abs_diff,note
 9 mcd (nargout=2 tuple),PASS,0.000000e+00,"RAW.class='mcd', REW.class='mcdr', cov(3, 3)"
 10 multivariate (pcaFS),PASS,6.106227e-16,explained eigenvalues vs numpy corr
 11 multivariate (CressieRead),PASS,0.000000e+00,PD=4.7540 vs numpy oracle
+12 utilities_stat (logfactorial),PASS,1.776357e-15,log(10!) vs numpy
+13 utilities_stat (tabulateFS),PASS,7.105427e-15,value/count/percent vs numpy
+14 utilities_stat (TBwei),PASS,0.000000e+00,Tukey biweight vs numpy

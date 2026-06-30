@@ -101,6 +101,14 @@
   `champagneCode`) + chained helpers (`FSMinvmmd`/`mdPartialMD2full`/`FSCorAnaenv`) out of
   scope. Added committed cases 10 `pcaFS` (eigenvalues vs numpy corr) and 11 `CressieRead`
   (PD, λ=2/3, vs numpy). All 12 cases PASS — 2026-06-30
+- [x] #p1 **`/utilities_stat` sweep — engine needs NO change.** 157 functions; static
+  buckets = 133 numeric (marshalled like `mahalFS`, which lives here) + 2 struct + 5 "table"
+  + 1 cell + 1 plot. Focused sweep of every structural gap-candidate (tables/structs/cell/
+  multi-output) + a numeric sample: **13/13 CROSS, 0 FAIL** — incl. `mdpattern` table→dict,
+  `crosstab2datamatrix`→`tuple(ndarray,dict)`, `RhoPsiWei`→struct, and the weight/ρ/ψ fns.
+  `grpstatsFS` needs a **table input** → out of scope (not an output gap). Added committed
+  cases 12 `logfactorial` (vs numpy), 13 `tabulateFS` ([value,count,percent] vs numpy.unique),
+  14 `TBwei` (Tukey biweight vs closed form). All 15 cases PASS — 2026-06-30
 
 - [x] #p1 Write `code/fsda_engine/engine.py` (generic engine + converters) — 2026-06-28
 - [x] #p1 Write `code/fsda_engine/check_engine.py` (four-case + FSRaddt gate) — 2026-06-28
