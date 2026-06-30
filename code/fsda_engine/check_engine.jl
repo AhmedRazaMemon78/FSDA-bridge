@@ -243,6 +243,20 @@ function case_tclustic(h)
     gate("16 clustering 2-D cell (tclustIC)", ok, 0.0, detail)
 end
 
+function case_removeextraspaces(h)
+    s = call(h, "removeExtraSpacesLF", "a   b    c  d")   # positional String in -> String out
+    ok = (s == "a b c d")
+    gate("17 utilities (removeExtraSpacesLF)", ok, ok ? 0.0 : Inf, "str -> str: $(repr(s))")
+end
+
+function case_triu2vec(h)
+    A = [1.0 2 3; 4 5 6; 7 8 9]
+    y = vec(call(h, "triu2vec", A, 1))
+    ref = [A[1, 2], A[1, 3], A[2, 3]]                     # strictly-upper, 3x3
+    diff = length(y) == length(ref) ? maximum(abs.(y .- ref)) : Inf
+    gate("18 utilities (triu2vec)", diff <= TOL, diff, "upper triangle vs oracle")
+end
+
 function main()
     fsda_root = length(ARGS) >= 1 && !isempty(ARGS[1]) ? ARGS[1] : nothing
     h = start_engine(fsda_root = fsda_root)
@@ -253,7 +267,8 @@ function main()
               case_corrnominal(h), case_fsm(h), case_mcd(h),
               case_pcafs(h), case_cressieread(h),
               case_logfactorial(h), case_tabulatefs(h), case_tbwei(h),
-              case_gower(h), case_tclustic(h)]
+              case_gower(h), case_tclustic(h),
+              case_removeextraspaces(h), case_triu2vec(h)]
         (d, rs)
     finally
         try; stop_engine(h); catch; end

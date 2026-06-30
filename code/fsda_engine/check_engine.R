@@ -235,6 +235,20 @@ case_tclustic = function(h) {
   gate("16 clustering 2-D cell (tclustIC)", ok, 0.0, detail)
 }
 
+case_removeextraspaces = function(h) {
+  s = fsda_call(h, "removeExtraSpacesLF", "a   b    c  d")   # positional string in -> string out
+  ok = identical(as.character(s), "a b c d")
+  gate("17 utilities (removeExtraSpacesLF)", ok, if (ok) 0.0 else Inf, paste0("str -> str: ", as.character(s)))
+}
+
+case_triu2vec = function(h) {
+  A = matrix(c(1, 2, 3, 4, 5, 6, 7, 8, 9), 3, 3, byrow = TRUE)
+  y = as.numeric(fsda_call(h, "triu2vec", A, 1))
+  ref = c(A[1, 2], A[1, 3], A[2, 3])                         # strictly-upper, 3x3
+  diff = if (length(y) == length(ref)) max(abs(y - ref)) else Inf
+  gate("18 utilities (triu2vec)", diff <= TOL, diff, "upper triangle vs oracle")
+}
+
 main = function() {
   fsda_root = local({ a = commandArgs(trailingOnly = TRUE); if (length(a) >= 1 && nzchar(a[1])) a[1] else NULL })
   h = start_engine(fsda_root = fsda_root)
@@ -246,7 +260,8 @@ main = function() {
             case_corrnominal(h), case_fsm(h), case_mcd(h),
             case_pcafs(h), case_cressieread(h),
             case_logfactorial(h), case_tabulatefs(h), case_tbwei(h),
-            case_gower(h), case_tclustic(h))
+            case_gower(h), case_tclustic(h),
+            case_removeextraspaces(h), case_triu2vec(h))
 
   overall = all(vapply(rs, function(r) r$ok, logical(1)))
   cat("=== spec 018: generic FSDA engine — R surface ===\n")
