@@ -155,6 +155,41 @@ function case_mcd(h)
          "RAW.class=$(get(RAW,"class","")), REW.class=$(get(REW,"class","")), cov $(size(RAW["cov"]))")
 end
 
+# scalar extractor: a direct scalar output crosses as a Number; a 1x1 struct field as a 1x1 array
+_scal(x) = x isa Number ? Float64(x) : Float64(first(x))
+
+function _corr(Y)                          # correlation matrix (no Statistics dependency)
+    n = size(Y, 1)
+    Yc = Y .- sum(Y, dims = 1) ./ n
+    S = (Yc' * Yc) ./ (n - 1)
+    d = sqrt.(diag(S))
+    return S ./ (d * d')
+end
+
+function case_pcafs(h)
+    Y = read_csv(joinpath(REFERENCE, "FSM_Y.csv"))
+    out = call(h, "pcaFS", Y; plots = 0)
+    (out isa Dict) || return gate("10 multivariate (pcaFS)", false, Inf, "expected Dict")
+    expl = out["explained"]                        # (p, 3) Matrix
+    eig_ref = reverse(eigvals(Symmetric(_corr(Y)))) # eigenvalues of corr, descending
+    diff = maximum(abs.(expl[:, 1] .- eig_ref))
+    gate("10 multivariate (pcaFS)", diff <= TOL, diff, "explained eigenvalues vs cor")
+end
+
+function case_cressieread(h)
+    N = [10.0 20 30; 40 50 60; 70 80 90]
+    res = call(h, "CressieRead", N; nargout = 2)   # no 'plots' option on this routine
+    (res isa AbstractVector && length(res) == 2) ||
+        return gate("11 multivariate (CressieRead)", false, Inf, "expected 2 outputs")
+    PD = _scal(res[1])
+    rt = sum(N, dims = 2); ct = sum(N, dims = 1); tot = sum(N)
+    E = rt .* ct ./ tot
+    la = 2.0 / 3.0
+    PD_ref = (2.0 / (la * (la + 1.0))) * sum(N .* ((N ./ E) .^ la .- 1.0))
+    diff = abs(PD - PD_ref)
+    gate("11 multivariate (CressieRead)", diff <= TOL, diff, "PD vs oracle")
+end
+
 function main()
     fsda_root = length(ARGS) >= 1 && !isempty(ARGS[1]) ? ARGS[1] : nothing
     h = start_engine(fsda_root = fsda_root)
@@ -162,7 +197,8 @@ function main()
         d = diagnostics(h)
         rs = [case_numeric(h), case_struct(h), case_nested(h), case_fsr(h),
               case_fsraddt(h), case_table(h), case_univariatems(h),
-              case_corrnominal(h), case_fsm(h), case_mcd(h)]
+              case_corrnominal(h), case_fsm(h), case_mcd(h),
+              case_pcafs(h), case_cressieread(h)]
         (d, rs)
     finally
         try; stop_engine(h); catch; end

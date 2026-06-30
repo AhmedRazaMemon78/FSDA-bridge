@@ -162,6 +162,29 @@ case_mcd = function(h) {
        paste0("RAW.class=", as.character(RAW$class), ", REW.class=", as.character(REW$class)))
 }
 
+case_pcafs = function(h) {
+  Y = read_matrix(REFERENCE, "FSM_Y.csv")
+  out = fsda_call(h, "pcaFS", Y, plots = 0)
+  if (!is.list(out)) return(gate("10 multivariate (pcaFS)", FALSE, Inf, "expected list"))
+  expl = as.matrix(out$explained)
+  eig_ref = sort(eigen(cor(Y), only.values = TRUE)$values, decreasing = TRUE)
+  diff = max(abs(expl[, 1] - eig_ref))
+  gate("10 multivariate (pcaFS)", diff <= TOL, diff, "explained eigenvalues vs cor")
+}
+
+case_cressieread = function(h) {
+  N = matrix(c(10, 20, 30, 40, 50, 60, 70, 80, 90), 3, 3, byrow = TRUE)
+  res = fsda_call(h, "CressieRead", N, nargout = 2)   # no 'plots' option on this routine
+  if (!is.list(res) || length(res) != 2) return(gate("11 multivariate (CressieRead)", FALSE, Inf, "expected 2 outputs"))
+  PD = as.numeric(res[[1]])[1]
+  rt = rowSums(N); ct = colSums(N); tot = sum(N)
+  E = outer(rt, ct) / tot
+  la = 2 / 3
+  PD_ref = (2 / (la * (la + 1))) * sum(N * ((N / E)^la - 1))
+  diff = abs(PD - PD_ref)
+  gate("11 multivariate (CressieRead)", diff <= TOL, diff, "PD vs oracle")
+}
+
 main = function() {
   fsda_root = local({ a = commandArgs(trailingOnly = TRUE); if (length(a) >= 1 && nzchar(a[1])) a[1] else NULL })
   h = start_engine(fsda_root = fsda_root)
@@ -170,7 +193,8 @@ main = function() {
   diags = diagnostics(h)
   rs = list(case_numeric(h), case_struct(h), case_nested(h), case_fsr(h),
             case_fsraddt(h), case_table(h), case_univariatems(h),
-            case_corrnominal(h), case_fsm(h), case_mcd(h))
+            case_corrnominal(h), case_fsm(h), case_mcd(h),
+            case_pcafs(h), case_cressieread(h))
 
   overall = all(vapply(rs, function(r) r$ok, logical(1)))
   cat("=== spec 018: generic FSDA engine — R surface ===\n")
