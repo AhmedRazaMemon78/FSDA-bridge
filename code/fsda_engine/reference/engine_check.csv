@@ -18,3 +18,6 @@ case,result,max_abs_diff,note
 16 clustering 2-D cell (tclustIC),PASS,0.000000e+00,IDXCLA 2x8 nested list
 17 utilities (removeExtraSpacesLF),PASS,0.000000e+00,str -> str: 'a b c d'
 18 utilities (triu2vec),PASS,0.000000e+00,upper triangle vs numpy
+19 combinatorial (bc),PASS,0.000000e+00,"C(12,5)=792 vs math.comb"
+20 combinatorial (combsFS),PASS,0.000000e+00,10x3 combinations vs itertools
+21 combinatorial (lexunrank),PASS,0.000000e+00,kcomb(set) vs itertools; calls=9

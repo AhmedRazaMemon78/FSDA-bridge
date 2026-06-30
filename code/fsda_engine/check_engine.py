@@ -26,6 +26,10 @@ replaces the per-routine plumbing without a wrapper per routine:
    16. /clustering 2-D cell  tclustIC(Y) -> struct w/ M x N cell fields -> nested lists
    17. /utilities str I/O    removeExtraSpacesLF(txt) -> str (positional string input)
    18. /utilities numeric    triu2vec(A,1) -> upper-triangle elements vs numpy
+   19. /combinatorial        bc(n,k) -> float binomial coefficient vs math.comb
+   20. /combinatorial        combsFS(v,m) -> matrix of m-combinations vs itertools
+   21. /combinatorial 2-out  [kcomb,calls]=lexunrank(n,k,N) -> numeric tuple; kcomb (as a
+                             set) vs itertools lexicographic oracle (nargout=2)
 
 Cases 2/4/(+) also gate a real struct field against committed gold read **only**
 from the existing per-target `reference/` folders -- nothing existing is written
@@ -43,6 +47,8 @@ tolerance is atol=1e-9 (CONSTITUTION sec 5).
 from __future__ import annotations
 
 import csv
+import itertools
+import math
 import platform
 import sys
 from importlib import metadata
@@ -504,6 +510,51 @@ def case_triu2vec(eng: FsdaEngine) -> dict:
     return gate("18 utilities (triu2vec)", same and diff <= TOL, diff, "upper triangle vs numpy")
 
 
+def case_bc(eng: FsdaEngine) -> dict:
+    """19. /combinatorial scalar: bc(n,k) = n!/(k!(n-k)!) -> float, vs math.comb."""
+    n, k = 12, 5
+    c = float(np.asarray(eng.call("bc", float(n), float(k))))
+    ref = float(math.comb(n, k))
+    diff = abs(c - ref)
+    return gate("19 combinatorial (bc)", diff <= TOL, diff, f"C({n},{k})={c:.0f} vs math.comb")
+
+
+def case_combsfs(eng: FsdaEngine) -> dict:
+    """20. /combinatorial matrix: combsFS(v,m) -> all m-combinations of v in lexicographic
+    order, vs itertools.combinations (also exercises the v -> P value-mapping path)."""
+    v = [2.0, 4.0, 6.0, 8.0, 10.0]
+    m = 3
+    P = np.asarray(eng.call("combsFS", np.array([v]), float(m)), dtype=float)
+    ref = np.array(list(itertools.combinations(v, m)), dtype=float)
+    same = P.shape == ref.shape
+    diff = float(np.max(np.abs(P - ref))) if same else float("inf")
+    return gate("20 combinatorial (combsFS)", same and diff <= TOL, diff,
+                f"{P.shape[0]}x{P.shape[1]} combinations vs itertools")
+
+
+def case_lexunrank(eng: FsdaEngine) -> dict:
+    """21. /combinatorial two-output: [kcomb,calls]=lexunrank(n,k,N) -> numeric tuple
+    (vector + scalar). Validates nargout=2 marshalling of *plain numeric* outputs (cases
+    9/11 returned struct/divergence tuples). FSDA returns position N in reverse
+    co-lexicographic order == lexicographic position bc(n,k)-N, so the oracle is the
+    (bc(n,k)-N-1)-th itertools combination; FSDA orders kcomb descending, so compare as a
+    sorted set."""
+    n, k, N = 6, 3, 7
+    res = eng.call("lexunrank", float(n), float(k), float(N), nargout=2)
+    if not (isinstance(res, tuple) and len(res) == 2):
+        return gate("21 combinatorial (lexunrank)", False, float("inf"),
+                    f"expected 2-tuple, got {type(res).__name__}")
+    kcomb = np.sort(np.asarray(res[0], dtype=float).reshape(-1))
+    calls = float(np.asarray(res[1]))
+    combos = list(itertools.combinations(range(1, n + 1), k))
+    ref = np.array(combos[math.comb(n, k) - N - 1], dtype=float)   # already ascending
+    same = kcomb.shape == ref.shape
+    diff = float(np.max(np.abs(kcomb - ref))) if same else float("inf")
+    ok = same and diff <= TOL and math.isfinite(calls) and calls > 0
+    return gate("21 combinatorial (lexunrank)", ok, diff,
+                f"kcomb(set) vs itertools; calls={calls:.0f}")
+
+
 def main() -> int:
     fsda_root = sys.argv[1] if len(sys.argv) > 1 else None
     eng = FsdaEngine.start(fsda_root=fsda_root)
@@ -529,6 +580,9 @@ def main() -> int:
             case_tclustic(eng),
             case_removeextraspaces(eng),
             case_triu2vec(eng),
+            case_bc(eng),
+            case_combsfs(eng),
+            case_lexunrank(eng),
         ]
     finally:
         eng.stop()

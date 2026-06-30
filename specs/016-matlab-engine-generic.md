@@ -128,6 +128,15 @@
   `wraptextFS`), `findFile` → `list[str]` (cell of strings), and numeric (`triu2vec`,
   `zscoreFS`). Added cases 17 `removeExtraSpacesLF` (str I/O) and 18 `triu2vec` (upper-triangle
   vs numpy). All 18 cases PASS — 2026-06-30
+- [x] #p1 **`/combinatorial` sweep — engine needs NO change.** 7 routines (`bc`, `combsFS`,
+  `lexunrank`, `nchoosekFS`, `randsampleFS`, `shuffling`, `subsets`) — **all numeric-only**
+  (scalar/vector/matrix), no tables/structs/cells. Empirical sweep of all 7 (incl. the
+  `nargout=2` pairs `lexunrank`/`subsets`): **8/8 CROSS**, every output `float`/`ndarray`/
+  numeric-tuple. 3 are RNG-dependent (`randsampleFS`/`shuffling`/random `subsets`) → unusable
+  as deterministic checks. Added cases 19 `bc` (scalar vs `math.comb`), 20 `combsFS` (matrix
+  of m-combinations vs `itertools`, exercises the v→P value-mapping), and 21 `lexunrank`
+  (**nargout=2 plain-numeric tuple** — first such; oracle = `bc(n,k)-N` lexicographic combo,
+  compared as a sorted set since FSDA orders `kcomb` descending). All 21 cases PASS — 2026-06-30
 
 - [x] #p1 Write `code/fsda_engine/engine.py` (generic engine + converters) — 2026-06-28
 - [x] #p1 Write `code/fsda_engine/check_engine.py` (four-case + FSRaddt gate) — 2026-06-28
