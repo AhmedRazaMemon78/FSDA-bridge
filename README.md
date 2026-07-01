@@ -3,8 +3,8 @@
 A local research prototype for calling routines from **[FSDA](https://github.com/UniprJRC/FSDA)** (a
 MATLAB robust-statistics toolbox) from **Python**, **Julia**, and **R**, while keeping the original
 MATLAB FSDA code as the unmodified computational backend. The goal is to learn how the bridge behaves
-on real routines and where data marshalling breaks — **not** to ship a package. There is no build, no
-CI, no heavy dependencies.
+on real routines and where data marshalling breaks — **not** to ship a package in the current state.
+There is no build, no CI, no heavy dependencies.
 
 Work is **spec-driven**: `CONSTITUTION.md` fixes the rules common to every unit of work, `AGENTS.md`
 tells any AI/human contributor how to work here, and each task is one file under `specs/`.
@@ -26,7 +26,7 @@ Layer 2   Julia          R
 **The one idea to take away:** *all* data marshalling lives in **one place** — the Python
 `FsdaEngine` (`code/fsda_engine/engine.py`). The Julia and R surfaces are **thin adapters** that call
 straight into that Python engine and only convert the result into native Julia/R values. They
-re-implement **no** marshalling, so they inherit every engine change for free. (Concretely: the
+re-implement **no** marshalling, so they inherit every engine change for free. (For example: the
 2-D-cell decode added for `/clustering` landed a day after the adapters were written, yet the Julia
 and R gates exercise it with zero adapter edits.)
 
@@ -34,7 +34,7 @@ and R gates exercise it with zero adapter edits.)
 
 ## 2. The generic engine (`code/fsda_engine/engine.py`)
 
-This is the heart of the project and where an engineer should start reading.
+This is the heart of the project.
 
 ### Lifecycle
 
