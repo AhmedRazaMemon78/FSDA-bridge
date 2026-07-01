@@ -202,19 +202,30 @@ Recent iterations added coverage by sweeping whole FSDA toolbox folders with a r
 
 ---
 
-## 7. Requirements & toolchain (pinned)
+## 7. Requirements & toolchain
 
-| Component | Pin |
-|---|---|
-| MATLAB | **R2026a** with the **FSDA Add-On** installed (verify `which mahalFS` inside MATLAB) |
-| Python | **3.12.10** in a venv, with `numpy` and `matlabengine==26.1.*` (from PyPI) |
-| Julia | any recent Julia with **PythonCall** (project: `code/fsda_engine/Project.toml`) |
-| R | any recent R with **reticulate** |
+The specific version numbers below are **not** mandatory — they are what this repo was developed
+against (`CONSTITUTION.md §2` pins them for reproducibility). The **one real constraint** is that the
+pieces be **version-matched**:
 
-`matlab.engine` is locked to the installed MATLAB release — keep the MATLAB ↔ engine-package versions
-paired. The bridge resolves the Python interpreter in this order, so nothing machine-specific is
-committed: **(a)** an activated venv, **(b)** the `FSDA_DEV_VENV` env var (point it at the venv's
-*python executable*), **(c)** `python` / `python3` on `PATH`.
+- **`matlab.engine` must match your installed MATLAB release.** This is the actual lock: install the
+  `matlabengine` PyPI version that pairs with your MATLAB (R2026a → `matlabengine==26.1.*`; a different
+  MATLAB release just needs its matching engine package).
+- **Python must be within the range your MATLAB release supports** — for R2026a that is **3.9–3.13**,
+  so the pinned `3.12.10` is only the exact patch the dev box uses, not a requirement.
+- **MATLAB** needs the **FSDA Add-On** on the path (verify `which mahalFS`). Any release recent enough
+  for FSDA and a matching engine works; R2026a is the reference, not a floor.
+
+| Component | Developed against | What actually matters |
+|---|---|---|
+| MATLAB | R2026a + FSDA Add-On | any FSDA-capable release, engine package paired to it |
+| Python | 3.12.10 + `numpy` + `matlabengine==26.1.*` | any Python in the release's supported range; engine version paired to MATLAB |
+| Julia | PythonCall (`code/fsda_engine/Project.toml`) | any recent Julia |
+| R | reticulate | any recent R |
+
+The bridge resolves the Python interpreter in this order, so nothing machine-specific is committed:
+**(a)** an activated venv, **(b)** the `FSDA_DEV_VENV` env var (point it at the venv's *python
+executable*), **(c)** `python` / `python3` on `PATH`.
 
 ---
 
@@ -224,14 +235,14 @@ committed: **(a)** an activated venv, **(b)** the `FSDA_DEV_VENV` env var (point
 # macOS / Linux — from the repo root
 python3 -m venv .venv && source .venv/bin/activate
 python -m pip install --upgrade pip
-python -m pip install numpy "matlabengine==26.1.*"
+python -m pip install numpy "matlabengine==26.1.*"   # 26.1.* pairs with MATLAB R2026a — match yours
 ```
 
 ```powershell
 # Windows PowerShell
 python -m venv .venv; .venv\Scripts\Activate.ps1
 python -m pip install --upgrade pip
-python -m pip install numpy "matlabengine==26.1.*"
+python -m pip install numpy "matlabengine==26.1.*"   # 26.1.* pairs with MATLAB R2026a — match yours
 ```
 
 For the Julia and R gates, point `FSDA_DEV_VENV` at that same interpreter so PythonCall / reticulate
