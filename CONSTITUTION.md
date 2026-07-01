@@ -52,6 +52,13 @@ Values cross the MATLAB ↔ Python boundary and lose information silently if ung
 - A MATLAB **`table` / `timetable`** cannot be returned to Python directly — the generic engine runs in
   the MATLAB workspace and decomposes it into a dict `{VariableNames, RowNames / RowTimes, data}`.
   **Struct-arrays / datetime** still do not marshal generically (handled bespoke, e.g. `getYahoo`).
+- **Graphics handle objects (`matlab.graphics.*`) are never marshalled to Python — they are never
+  requested.** That output is never used on the Python side, so the bridge does not try to convert it.
+  Plotting functions (the whole `toolbox/graphics` folder) are called with **`nargout=0`** for their
+  side effect, or with `nargout` tuned to return **only their data outputs**, skipping any leading/
+  trailing handle (e.g. `distribspec` → take `p`, drop `h`; `histFS` → take `ng`, drop `hb`). A handle
+  that rides *inside* a returned struct (e.g. `boxplotb`'s `handles` field) crosses harmlessly as an
+  empty array and needs no special handling.
 - **Rule:** shape/dtype-check every marshalled value at the boundary — no silent reshape (the generic
   engine returns MATLAB's natural shape; a 1-D input crosses as a MATLAB **row**, so pass `(n, 1)` for a
   column). An index returned from MATLAB stays 1-based until the language surface converts it; never hand

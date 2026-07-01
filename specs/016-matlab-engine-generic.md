@@ -154,6 +154,26 @@
   One check is proportionate — `publishFS` is the lone clean engine-relevant routine in a
   tooling folder. All 22 cases PASS — 2026-06-30
 
+- [x] #p1 **`/graphics` sweep — engine needs NO change.** 42 files, almost all *plotting*
+  functions — different in kind from every prior (data-returning) folder. The new return
+  type is the **graphics handle object** (`matlab.graphics.*`). **Design decision (now binding
+  in CONSTITUTION §4): graphics handles are never marshalled — they are never requested.**
+  Plot functions are called with **`nargout=0`** (draw for the side effect → `None`) or with
+  `nargout` tuned to return only their **data** outputs, skipping the handle. Empirical sweep:
+  `yXplot`/`spmplot`/`resindexplot`/`scatterboxplot`/`polarhistogramFS`/`funnelchart`/
+  `balloonplot` all cross as `None` at `nargout=0`; `waterfallchart` erred only as a
+  `MatlabExecutionError` (my matrix input; it wants a vector) — no gap. A handle riding
+  *inside* a struct (`boxplotb.handles`) crosses harmlessly as an **empty array**, never a
+  crash — so struct-embedded handles need no special handling either. Added 3 data-only checks
+  (no handle requested): **23** `distribspec(makedist('Normal'),[-1.96 1.96],'inside')` → `p`
+  vs `Phi(1.96)-Phi(-1.96)` (stdlib `math.erf`, 1.1e-16); **24** `histFS(y,edges,gy)` → `ng`
+  (bins×groups) summed over groups vs `np.histogram` (exact); **25** `boxplotb(Y)` → struct
+  (structural: `cent` has `v` coords, `Spl` 4 cols). Gotcha: `distribspec` grabs the *ambient*
+  `gcf`/`gca` (it makes no figure of its own), so after 22 prior cases + pcaFS's parpool its
+  `gca` was a deleted axes → `MatlabExecutionError` at `get(nspecaxes,'Xlim')`; fixed in the
+  check by opening a fresh `figure` first (`p` is the true CDF mass, independent of the axes).
+  All 25 cases PASS — 2026-07-01
+
 - [x] #p1 Write `code/fsda_engine/engine.py` (generic engine + converters) — 2026-06-28
 - [x] #p1 Write `code/fsda_engine/check_engine.py` (four-case + FSRaddt gate) — 2026-06-28
 - [x] #p1 Run the gate; overall `PASS` at 1e-9 — 2026-06-28. All five cases pass

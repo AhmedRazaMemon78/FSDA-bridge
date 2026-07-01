@@ -22,3 +22,6 @@ case,result,max_abs_diff,note
 20 combinatorial (combsFS),PASS,0.000000e+00,10x3 combinations vs itertools
 21 combinatorial (lexunrank),PASS,0.000000e+00,kcomb(set) vs itertools; calls=9
 22 utilities_help (publishFS),PASS,0.000000e+00,"titl='mahalFS'; InpArgs names=['Y', 'MU', 'SIGMA']"
+23 graphics (distribspec),PASS,1.110223e-16,P(|Z|<1.96)=0.950004 vs erf oracle (handle not requested)
+24 graphics (histFS),PASS,0.000000e+00,"ng (5, 2) bin totals vs np.histogram (n=40)"
+25 graphics (boxplotb),PASS,0.000000e+00,"cent(2,) Spl(6000, 4); struct-embedded handles cross empty"

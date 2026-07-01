@@ -32,6 +32,12 @@ replaces the per-routine plumbing without a wrapper per routine:
                              set) vs itertools lexicographic oracle (nargout=2)
    22. /utilities_help       publishFS(file) -> struct (help parser): strings + 2-D-cell
                              InpArgs/OutArgs + empty MException laste -> dict
+   23. /graphics data-only   distribspec(pd,specs,region) -> p only (nargout=1; graphics
+                             handle h never requested) vs Phi(1.96)-Phi(-1.96) erf oracle
+   24. /graphics data-only   histFS(y,edges,gy) -> ng(bins x groups) counts (bar handles hb
+                             not requested); ng summed over groups vs np.histogram
+   25. /graphics struct      boxplotb(Y) -> bivariate-boxplot struct -> dict (STRUCTURAL;
+                             its graphics `handles` field crosses harmlessly as an empty array)
 
 Cases 2/4/(+) also gate a real struct field against committed gold read **only**
 from the existing per-target `reference/` folders -- nothing existing is written
@@ -582,6 +588,61 @@ def case_publishfs(eng: FsdaEngine) -> dict:
                 f"titl={out.get('titl')!r}; InpArgs names={in_names}")
 
 
+def case_distribspec(eng: FsdaEngine) -> dict:
+    """23. /graphics data-only: distribspec(pd,specs,region) plots a pdf between spec limits
+    and returns [p, h] where p is the probability mass in the shaded region and h is a
+    graphics handle. We request ONLY p (nargout=1 via eval -- the handle is never marshalled;
+    graphics handles are out of scope by design, see CONSTITUTION). The pd is a makedist object
+    built MATLAB-side. Oracle for N(0,1), 'inside' [-1.96,1.96]: p = Phi(1.96)-Phi(-1.96) via
+    stdlib math.erf (no scipy).
+
+    distribspec draws into the *ambient* current figure (`nspecfig=gcf; nspecaxes=gca;`), so a
+    fresh figure is opened first -- otherwise a stale/deleted `gca` left by earlier cases makes
+    it error at `get(nspecaxes,'Xlim')`. p is the true CDF mass and is independent of the axes."""
+    eng.eval("figure", nargout=0)               # valid current axes for distribspec's gcf/gca
+    p = float(eng.eval("distribspec(makedist('Normal','mu',0,'sigma',1),"
+                       "[-1.96 1.96],'inside')"))
+    ref = 0.5 * (math.erf(1.96 / math.sqrt(2.0)) - math.erf(-1.96 / math.sqrt(2.0)))
+    diff = abs(p - ref)
+    return gate("23 graphics (distribspec)", diff <= TOL, diff,
+                f"P(|Z|<1.96)={p:.6f} vs erf oracle (handle not requested)")
+
+
+def case_histfs(eng: FsdaEngine) -> dict:
+    """24. /graphics data-only: [ng,hb]=histFS(y,edges,gy) -> ng(bins x groups) counts (hb are
+    bar handles, NOT requested; nargout=1). Passing explicit edges makes the binning match
+    numpy exactly: summing ng over groups must equal np.histogram(y,bins=edges), and total ng
+    must equal n."""
+    y = _fsm_dataset()[:, 0]                          # committed 40-vector, deterministic
+    edges = np.linspace(y.min() - 1e-9, y.max() + 1e-9, 6)   # 5 bins spanning the data
+    gy = (y > np.median(y)).astype(float)            # 2 groups
+    ng = np.asarray(eng.call("histFS", y, edges, gy, nargout=1), dtype=float)
+    binsum = ng.sum(axis=1) if ng.ndim == 2 else ng
+    ref, _ = np.histogram(y, bins=edges)
+    same = binsum.shape == ref.shape and int(ng.sum()) == y.size
+    diff = float(np.max(np.abs(binsum - ref))) if same else float("inf")
+    return gate("24 graphics (histFS)", same and diff <= TOL, diff,
+                f"ng {ng.shape} bin totals vs np.histogram (n={y.size})")
+
+
+def case_boxplotb(eng: FsdaEngine) -> dict:
+    """25. /graphics struct: boxplotb(Y) computes a bivariate boxplot (bagplot) and returns a
+    struct -> dict. Structural gate: the center `cent` has v coordinates, the contour points
+    `Spl` have 4 columns, and the graphics `handles` field crosses harmlessly (an empty array,
+    never a crash -- the folder's proof that struct-embedded handles need no special handling)."""
+    Y = _fsm_dataset()[:, :2]                         # bivariate, deterministic
+    out = eng.call("boxplotb", Y, nargout=1)
+    if not isinstance(out, dict):
+        return gate("25 graphics (boxplotb)", False, float("inf"),
+                    f"expected dict, got {type(out).__name__}")
+    cent = np.asarray(out.get("cent"), dtype=float).reshape(-1)
+    spl = np.asarray(out.get("Spl"), dtype=float)
+    ok = (cent.size == Y.shape[1] and spl.ndim == 2 and spl.shape[1] == 4
+          and "outliers" in out and "handles" in out)
+    return gate("25 graphics (boxplotb)", ok, 0.0 if ok else float("inf"),
+                f"cent{cent.shape} Spl{spl.shape}; struct-embedded handles cross empty")
+
+
 def main() -> int:
     fsda_root = sys.argv[1] if len(sys.argv) > 1 else None
     eng = FsdaEngine.start(fsda_root=fsda_root)
@@ -611,6 +672,9 @@ def main() -> int:
             case_combsfs(eng),
             case_lexunrank(eng),
             case_publishfs(eng),
+            case_distribspec(eng),
+            case_histfs(eng),
+            case_boxplotb(eng),
         ]
     finally:
         eng.stop()
