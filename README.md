@@ -213,7 +213,7 @@ pieces be **version-matched**:
   MATLAB release just needs its matching engine package).
 - **Python must be within the range your MATLAB release supports** — for R2026a that is **3.9–3.13**,
   so the pinned `3.12.10` is only the exact patch the dev box uses, not a requirement.
-- **MATLAB** needs the **FSDA Add-On** on the path (verify `which mahalFS`). Any release recent enough
+- **MATLAB** needs the **FSDA Add-On** on the path, see next section. Any release recent enough
   for FSDA and a matching engine works; R2026a is the reference, not a floor.
 
 | Component | Developed against | What actually matters |
