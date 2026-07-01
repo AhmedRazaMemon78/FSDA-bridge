@@ -307,6 +307,60 @@ function case_lexunrank(h)
     gate("21 combinatorial (lexunrank)", ok, diff, "kcomb(set) vs oracle; calls=$(Int(calls))")
 end
 
+function case_publishfs(h)
+    out = call(h, "publishFS", "mahalFS"; write2file = false, evalCode = false,
+               Display = "none", ErrWrngSeeAlso = false)
+    (out isa Dict) || return gate("22 utilities_help (publishFS)", false, Inf,
+                                  "expected Dict, got $(typeof(out))")
+    inp = get(out, "InpArgs", nothing)                 # 3x8 nested list via _marshal_cell2d
+    in_names = (inp isa AbstractVector && !isempty(inp) && inp[1] isa AbstractVector) ?
+               String[String(r[1]) for r in inp] : nothing
+    outa = get(out, "OutArgs", nothing)                # column cell -> flat list
+    out_first = (outa isa AbstractVector && !isempty(outa)) ? outa[1] : nothing
+    ok = get(out, "titl", nothing) == "mahalFS" &&
+         in_names == ["Y", "MU", "SIGMA"] && out_first == "d" &&
+         get(out, "laste", nothing) == ""
+    gate("22 utilities_help (publishFS)", ok, ok ? 0.0 : Inf,
+         "titl=$(repr(get(out, "titl", nothing))); InpArgs=$(in_names)")
+end
+
+function case_distribspec(h)
+    eval_expr(h, "figure"; nargout = 0)                # valid ambient gcf/gca for distribspec
+    p = _scal(eval_expr(h, "distribspec(makedist('Normal','mu',0,'sigma',1)," *
+                           "[-1.96 1.96],'inside')"))  # nargout=1 -> p only; handle h not requested
+    m = pyimport("math")
+    ref = 0.5 * (pyconvert(Float64, m.erf(1.96 / sqrt(2))) -
+                 pyconvert(Float64, m.erf(-1.96 / sqrt(2))))
+    gate("23 graphics (distribspec)", abs(p - ref) <= TOL, abs(p - ref),
+         "P(|Z|<1.96)=$(round(p, digits = 6)) vs erf oracle (handle not requested)")
+end
+
+function case_histfs(h)
+    y = read_csv(joinpath(REFERENCE, "FSM_Y.csv"))[:, 1]         # committed 40-vector
+    edges = collect(range(minimum(y) - 1e-9, maximum(y) + 1e-9; length = 6))  # 5 bins
+    gy = Float64.(y .> (sum(y) / length(y)))                     # 2 groups (any split)
+    ng = call(h, "histFS", y, edges, gy; nargout = 1)           # (bins x groups); hb not requested
+    binsum = vec(sum(ng, dims = 2))
+    ref = Float64[count(e -> edges[i] <= e < edges[i+1], y) for i in 1:length(edges)-1]
+    same = length(binsum) == length(ref) && Int(sum(ng)) == length(y)
+    diff = same ? maximum(abs.(binsum .- ref)) : Inf
+    gate("24 graphics (histFS)", same && diff <= TOL, diff,
+         "ng $(size(ng)) bin totals vs native histogram (n=$(length(y)))")
+end
+
+function case_boxplotb(h)
+    Y = read_csv(joinpath(REFERENCE, "FSM_Y.csv"))[:, 1:2]       # bivariate
+    out = call(h, "boxplotb", Y; nargout = 1)
+    (out isa Dict) || return gate("25 graphics (boxplotb)", false, Inf,
+                                  "expected Dict, got $(typeof(out))")
+    cent = vec(Float64.(out["cent"]))
+    spl = out["Spl"]
+    ok = length(cent) == size(Y, 2) && ndims(spl) == 2 && size(spl, 2) == 4 &&
+         haskey(out, "outliers") && haskey(out, "handles")
+    gate("25 graphics (boxplotb)", ok, ok ? 0.0 : Inf,
+         "cent$(size(cent)) Spl$(size(spl)); struct-embedded handles cross empty")
+end
+
 function main()
     fsda_root = length(ARGS) >= 1 && !isempty(ARGS[1]) ? ARGS[1] : nothing
     h = start_engine(fsda_root = fsda_root)
@@ -319,7 +373,8 @@ function main()
               case_logfactorial(h), case_tabulatefs(h), case_tbwei(h),
               case_gower(h), case_tclustic(h),
               case_removeextraspaces(h), case_triu2vec(h),
-              case_bc(h), case_combsfs(h), case_lexunrank(h)]
+              case_bc(h), case_combsfs(h), case_lexunrank(h),
+              case_publishfs(h), case_distribspec(h), case_histfs(h), case_boxplotb(h)]
         (d, rs)
     finally
         try; stop_engine(h); catch; end

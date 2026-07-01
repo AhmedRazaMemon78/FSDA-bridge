@@ -43,8 +43,19 @@
 - [x] #p1 `engine.R` (generic surface, reticulate auto-convert) — 2026-06-29
 - [x] #p1 `check_engine.R` mirroring the Python gate; overall `PASS` (7 cases,
   R 4.4.1 / reticulate 1.45.0 / MATLAB R2026a) — 2026-06-29
+- [x] #p1 Mirror cases through **25** into `check_engine.R`. Latest **22–25**: 22 `publishFS`
+  (nested named-list access `r[[1]]` over the 3×8 `InpArgs`, empty `laste`), 23 `distribspec`
+  (base-R `pnorm(1.96)-pnorm(-1.96)` oracle; fresh `figure` via `eval_m`), 24 `histFS` (base-R
+  `hist(y, breaks=edges, plot=FALSE)$counts`), 25 `boxplotb` (structural named-list). **`engine.R`
+  unchanged** — reticulate delegates to `engine.py` and inherits its marshalling. All **25**
+  PASS — 2026-07-01
 
-### Learnings (2026-06-29)
+### Learnings (2026-06-29, +2026-07-01)
 - R is the lightest of the three surfaces: reticulate `convert=TRUE` removes the need for
   any recursive py→R converter (Julia's `_py2jl`). Watch two R-isms: `call`/`diag` are
   base bindings (avoid as names / `<<-` targets).
+- **Adapter, not reimplementation.** `engine.R` never re-does marshalling — it delegates to the
+  Python `FsdaEngine.call`, so it stays current with `engine.py` for free (cases 15–16 use the
+  /clustering 2-D-cell fix with no `engine.R` edit). Sync is a *check-file* task only.
+- **Graphics handles are never requested** (CONSTITUTION §4); every graphics case takes data
+  outputs only. `distribspec` grabs the ambient `gcf`/`gca`, so open a fresh `figure` first.

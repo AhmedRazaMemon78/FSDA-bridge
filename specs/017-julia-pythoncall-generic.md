@@ -47,8 +47,23 @@
 - [x] #p1 `check_engine.jl` mirroring the Python gate; overall `PASS` (7 cases,
   Julia 1.12.6 / PythonCall 0.9.35 / MATLAB R2026a) — 2026-06-29
 - [x] #p2 `Project.toml`/`Manifest.toml` for the engine env (PythonCall) — 2026-06-29
+- [x] #p1 Mirror cases through **25** into `check_engine.jl` (the Python gate grew across the
+  /multivariate…/graphics sweeps). Latest **22–25**: 22 `publishFS` (struct with a 3×8 nested
+  cell `InpArgs` → `Vector{Vector}` via `_py2jl`, strings + empty `laste`), 23 `distribspec`
+  (p only via `eval_expr` + a fresh `figure`; oracle `math.erf` through PythonCall), 24 `histFS`
+  (`ng` bins×groups vs a native bin count), 25 `boxplotb` (struct; its graphics `handles` field
+  crosses as an empty array). **`engine.jl` unchanged** — it delegates to `engine.py` and
+  inherits every marshalling change (incl. the /clustering 2-D-cell fix). All **25** PASS —
+  2026-07-01
 
-### Learnings (2026-06-29)
+### Learnings (2026-06-29, +2026-07-01)
 - The generic Julia surface is *smaller* than a per-target `bridge.jl` (no per-routine
   validation) but needs the recursive `_py2jl` because PythonCall never auto-converts; R
   (spec 018) gets this free from reticulate `convert=TRUE`.
+- **Adapter, not reimplementation.** `engine.jl` never re-does marshalling — it calls the
+  Python `FsdaEngine.call` and only converts the result. So it is automatically current with
+  `engine.py`: the /clustering 2-D-cell fix landed a day *after* `engine.jl` was written, yet
+  cases 15–16 pass here with no `engine.jl` edit. Keeping the two in sync is a *check-file* task.
+- **Graphics handles are never requested** (CONSTITUTION §4): plot routines run at `nargout=0`
+  or return only data outputs, so `_py2jl` never sees a handle. One inside a struct
+  (`boxplotb.handles`) already arrives from `engine.py` as an empty array.

@@ -278,6 +278,55 @@ case_lexunrank = function(h) {
   gate("21 combinatorial (lexunrank)", ok, diff, paste0("kcomb(set) vs oracle; calls=", calls))
 }
 
+case_publishfs = function(h) {
+  out = fsda_call(h, "publishFS", "mahalFS", write2file = FALSE, evalCode = FALSE,
+                  Display = "none", ErrWrngSeeAlso = FALSE)
+  if (!is.list(out)) return(gate("22 utilities_help (publishFS)", FALSE, Inf, "expected named list"))
+  inp = out$InpArgs                                        # 3x8 nested list via _marshal_cell2d
+  in_names = if (is.list(inp) && length(inp) > 0)
+               vapply(inp, function(r) as.character(r[[1]])[1], character(1)) else NULL
+  outa = out$OutArgs                                       # column cell -> list / vector
+  out_first = if (length(outa) > 0) as.character(if (is.list(outa)) outa[[1]] else outa[1]) else NULL
+  ok = identical(as.character(out$titl), "mahalFS") &&
+       identical(in_names, c("Y", "MU", "SIGMA")) &&
+       identical(out_first, "d") && identical(as.character(out$laste), "")
+  gate("22 utilities_help (publishFS)", ok, if (ok) 0.0 else Inf,
+       paste0("titl=", as.character(out$titl), "; InpArgs=", paste(in_names, collapse = ",")))
+}
+
+case_distribspec = function(h) {
+  eval_m(h, "figure", nargout = 0)                         # valid ambient gcf/gca for distribspec
+  p = as.numeric(eval_m(h, "distribspec(makedist('Normal','mu',0,'sigma',1),[-1.96 1.96],'inside')"))[1]
+  ref = pnorm(1.96) - pnorm(-1.96)                         # base-R normal CDF oracle; handle not requested
+  gate("23 graphics (distribspec)", abs(p - ref) <= TOL, abs(p - ref),
+       paste0("P(|Z|<1.96)=", round(p, 6), " vs pnorm oracle (handle not requested)"))
+}
+
+case_histfs = function(h) {
+  y = read_matrix(REFERENCE, "FSM_Y.csv")[, 1]             # committed 40-vector
+  edges = seq(min(y) - 1e-9, max(y) + 1e-9, length.out = 6)  # 5 bins spanning data
+  gy = as.numeric(y > mean(y))                             # 2 groups (any split)
+  ng = as.matrix(fsda_call(h, "histFS", y, edges, gy, nargout = 1))  # bins x groups; hb not requested
+  binsum = rowSums(ng)
+  ref = hist(y, breaks = edges, plot = FALSE)$counts       # base-R oracle
+  same = length(binsum) == length(ref) && round(sum(ng)) == length(y)
+  diff = if (same) max(abs(binsum - ref)) else Inf
+  gate("24 graphics (histFS)", same && diff <= TOL, diff,
+       paste0("ng ", nrow(ng), "x", ncol(ng), " bin totals vs hist (n=", length(y), ")"))
+}
+
+case_boxplotb = function(h) {
+  Y = read_matrix(REFERENCE, "FSM_Y.csv")[, 1:2]           # bivariate
+  out = fsda_call(h, "boxplotb", Y, nargout = 1)
+  if (!is.list(out)) return(gate("25 graphics (boxplotb)", FALSE, Inf, "expected named list"))
+  cent = as.numeric(out$cent)
+  spl = as.matrix(out$Spl)
+  ok = length(cent) == ncol(Y) && ncol(spl) == 4 &&
+       "outliers" %in% names(out) && "handles" %in% names(out)
+  gate("25 graphics (boxplotb)", ok, if (ok) 0.0 else Inf,
+       paste0("cent(", length(cent), ") Spl(", nrow(spl), "x", ncol(spl), "); handles cross empty"))
+}
+
 main = function() {
   fsda_root = local({ a = commandArgs(trailingOnly = TRUE); if (length(a) >= 1 && nzchar(a[1])) a[1] else NULL })
   h = start_engine(fsda_root = fsda_root)
@@ -291,7 +340,8 @@ main = function() {
             case_logfactorial(h), case_tabulatefs(h), case_tbwei(h),
             case_gower(h), case_tclustic(h),
             case_removeextraspaces(h), case_triu2vec(h),
-            case_bc(h), case_combsfs(h), case_lexunrank(h))
+            case_bc(h), case_combsfs(h), case_lexunrank(h),
+            case_publishfs(h), case_distribspec(h), case_histfs(h), case_boxplotb(h))
 
   overall = all(vapply(rs, function(r) r$ok, logical(1)))
   cat("=== spec 018: generic FSDA engine — R surface ===\n")
