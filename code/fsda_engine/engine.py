@@ -146,13 +146,19 @@ class FsdaEngine:
 
     # --- lifecycle -----------------------------------------------------------
     @classmethod
-    def start(cls, routine: str | None = None, fsda_root: str | None = None) -> "FsdaEngine":
+    def start(cls, routine: str | None = None, fsda_root: str | None = None,
+              check_version: bool = True) -> "FsdaEngine":
         """Start a MATLAB engine; optionally verify one FSDA `routine` resolves.
 
         FSDA is normally a MATLAB Add-On (already on the path), so `fsda_root` can
         be None; pass the FSDA install dir only as a fallback (added with
         addpath(genpath(...))). When `routine` is given and cannot be found, the
         engine is closed and RuntimeError is raised.
+
+        When `check_version` is True (default), a one-off, non-fatal FSDA
+        up-to-date check runs once the session is up (see `_check_fsda_version`):
+        it is silent when FSDA is current and prints a notice otherwise. Pass
+        `check_version=False` for a network-free / hermetic session.
         """
         eng = matlab.engine.start_matlab()
         if fsda_root:
@@ -163,11 +169,49 @@ class FsdaEngine:
                 f"FSDA `{routine}` not found on the MATLAB path. Install the FSDA "
                 f"Add-On in MATLAB, or pass fsda_root=<FSDA install dir>."
             )
-        return cls(eng)
+        self = cls(eng)
+        if check_version:
+            self._check_fsda_version()
+        return self
 
     def stop(self) -> None:
         """Shut the engine session down (startup is slow -- callers control this)."""
         self.eng.quit()
+
+    def _check_fsda_version(self) -> None:
+        """Notify, once at session start, if the installed FSDA is not the latest.
+
+        Uses FSDA's own `tuna` utility in its quiet, no-GUI mode
+        (`tuna('FSDA','uniprJRC','FSDA','gui',false)`): tuna compares the installed
+        version (from the Add-On manager) against the latest GitHub release and
+        writes a message to the MATLAB Command Window ONLY when an update is
+        available -- so this prints nothing when FSDA is current. No modal dialog
+        is shown; a failure to reach GitHub is non-fatal MATLAB-side.
+
+        `tuna` is a recent FSDA utility, so `exist('tuna','file')==0` means FSDA is
+        either not installed or too old to self-check -- reported as such. The whole
+        check is best-effort: any Python-side failure is swallowed so it can never
+        break a session (disable it entirely with `start(check_version=False)`).
+        """
+        try:
+            has_tuna = int(self.eng.eval("double(exist('tuna','file')>0)", nargout=1))
+        except Exception:
+            return
+        if not has_tuna:
+            sys.stderr.write("FSDA not found on the MATLAB path, or too old to include "
+                             "'tuna' -- FSDA version check skipped.\n")
+            sys.stderr.flush()
+            return
+        out, err = io.StringIO(), io.StringIO()
+        try:
+            self.eng.eval("tuna('FSDA','uniprJRC','FSDA','gui',false)",
+                          nargout=0, stdout=out, stderr=err)
+        except Exception:
+            return                                    # tuna raised -> stay silent
+        msg = out.getvalue() + err.getvalue()
+        if msg.strip():                               # current FSDA -> tuna is silent
+            sys.stderr.write(msg)
+            sys.stderr.flush()
 
     # --- the generic call ----------------------------------------------------
     def call(self, name: str, *args, nargout: int = 1, echo_output: bool = False,

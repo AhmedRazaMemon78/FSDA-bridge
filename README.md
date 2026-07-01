@@ -227,6 +227,25 @@ The bridge resolves the Python interpreter in this order, so nothing machine-spe
 **(a)** an activated venv, **(b)** the `FSDA_DEV_VENV` env var (point it at the venv's *python
 executable*), **(c)** `python` / `python3` on `PATH`.
 
+### Is FSDA installed and up to date?
+
+`FsdaEngine.start()` runs a **best-effort version check** right after the engine boots (disable with
+`start(check_version=False)`). It drives FSDA's own `tuna` utility in a quiet, no-GUI mode
+(`tuna('FSDA','uniprJRC','FSDA','gui',false)`):
+
+- **`exist('tuna','file') == 0`** → FSDA is not on the MATLAB path *or* is too old to self-check
+  (`tuna` is a recent addition) → a one-line notice is printed.
+- **otherwise** `tuna` compares the installed version (from the Add-On manager) against the latest
+  GitHub release and emits a Command-Window notice **only when an update is available** — so a current
+  FSDA produces **no output**. No modal dialog appears, and any failure (offline, GitHub unreachable)
+  is non-fatal.
+
+Because the Julia and R surfaces call this same Python `start`, they inherit the check unchanged. Note
+that `tuna` reads the installed version via `matlab.addons.installedAddons`, which only lists FSDA when
+it is a registered **Add-On** — a raw source checkout on the path is seen as present but its version
+cannot be read (so the check reports it as not-an-Add-On rather than comparing versions). The
+`'gui', false` option this relies on lives in FSDA's `tuna.m` (`toolbox/utilities/tuna.m`).
+
 ---
 
 ## 8. Setup
