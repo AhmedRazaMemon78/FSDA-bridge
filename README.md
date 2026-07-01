@@ -1,106 +1,288 @@
-# fsda_python_porting_test
+# FSDA language bridges — Python · Julia · R
 
-A small **collaborative prototype** for calling [FSDA](https://github.com/UniprJRC/FSDA) (a MATLAB
-robust-statistics toolbox) from **Python** via the MATLAB Engine API, with thin **Julia** (PythonCall)
-and **R** (reticulate) surfaces layered on top of the same Python bridge. The goal is to learn how the
-bridge behaves on real routines, not to ship a package. Everything is local.
+A local research prototype for calling routines from **[FSDA](https://github.com/UniprJRC/FSDA)** (a
+MATLAB robust-statistics toolbox) from **Python**, **Julia**, and **R**, while keeping the original
+MATLAB FSDA code as the unmodified computational backend. The goal is to learn how the bridge behaves
+on real routines and where data marshalling breaks — **not** to ship a package. There is no build, no
+CI, no heavy dependencies.
 
-We work **spec-driven**: a shared `CONSTITUTION.md` fixes the rules common to all work, and each unit of
-work is one self-contained file under `specs/`. Different people use different agentic AI tools (Claude
-Code, Codex, …); a single `AGENTS.md` gives them all the same way of working.
+Work is **spec-driven**: `CONSTITUTION.md` fixes the rules common to every unit of work, `AGENTS.md`
+tells any AI/human contributor how to work here, and each task is one file under `specs/`.
 
-## Repo layout
+---
 
+## 1. Architecture at a glance
+
+```text
+Layer 0   MATLAB + FSDA                     (never edited — we only call it)
+             ▲
+Layer 1   Python  FsdaEngine  ── matlab.engine ──►      code/fsda_engine/engine.py
+             ▲            ▲
+Layer 2   Julia          R
+          PythonCall      reticulate
+          engine.jl       engine.R
 ```
-.
-├── README.md          ← you are here
-├── AGENTS.md          ← unified instructions for any AI agent working in this repo
-├── CONSTITUTION.md    ← project-wide contract: port chain, toolchain, marshalling, agreement gate
-├── specs/
-│   ├── TEMPLATE.md    ← copy this to start a new spec
-│   └── 001-*.md       ← one file per spec (Contract + Design + Tasks)
-└── code/
-    └── <target>/      ← prototype code for each ported FSDA routine
+
+**The one idea to take away:** *all* data marshalling lives in **one place** — the Python
+`FsdaEngine` (`code/fsda_engine/engine.py`). The Julia and R surfaces are **thin adapters** that call
+straight into that Python engine and only convert the result into native Julia/R values. They
+re-implement **no** marshalling, so they inherit every engine change for free. (Concretely: the
+2-D-cell decode added for `/clustering` landed a day after the adapters were written, yet the Julia
+and R gates exercise it with zero adapter edits.)
+
+---
+
+## 2. The generic engine (`code/fsda_engine/engine.py`)
+
+This is the heart of the project and where an engineer should start reading.
+
+### Lifecycle
+
+MATLAB engine startup is slow, so one session is started and reused:
+
+```python
+from engine import FsdaEngine
+
+eng = FsdaEngine.start("mahalFS")                      # boots MATLAB, verifies the routine is on the path
+d   = eng.call("mahalFS", Y, MU, SIGMA)                # numeric array  -> numpy ndarray
+out = eng.call("Score", y, X, la=la, intercept=True)  # struct         -> dict
+eng.stop()                                             # always shut the session down explicitly
 ```
 
-## Quickstart
+### The call surface
 
-You need:
-
-1. **MATLAB R2026a** with the **FSDA Add-On** installed (so `mahalFS` and friends are on the MATLAB
-   path — check with `which mahalFS` inside MATLAB).
-2. A **Python venv** with Python 3.12, `numpy`, and `matlabengine==26.1.*` (from PyPI). The bridge
-   resolves the interpreter in this order, so nothing machine-specific is committed: **(a)** an
-   activated venv, **(b)** the `FSDA_DEV_VENV` environment variable, **(c)** `python` / `python3` on
-   `PATH`.
-
-Run the spec 001 worked example. **Easiest — activate your venv, then run** (identical on Windows and
-macOS):
-
-```powershell
-# Windows (PowerShell), venv activated
-python code\mahalFS\check_mahalFS.py
+```python
+call(name, *args, nargout=1, echo_output=False, options=None, **kwargs)
+eval(expr, nargout=1)
 ```
+
+- **Positional `args`** are marshalled with `to_matlab` and passed to the FSDA function in order.
+- **Keyword args** (and any `options` dict) become MATLAB **name/value pairs**, in order:
+  `call("Score", y, X, la=la, intercept=True)` → `Score(y, X, 'la', la, 'intercept', true)`.
+- **Reserved keywords** — only `nargout`, `echo_output`, `options` are consumed by the bridge.
+  Everything else is forwarded to MATLAB. In particular FSDA's own `msg` option passes straight
+  through (`call("FSR", y, X, msg=0)`); `echo_output` is the bridge's *own* stdout/stderr tee, named so
+  it can never collide with an FSDA option. If an FSDA option name ever clashes with a reserved word,
+  route it via `options={...}`.
+- `nargout=2` returns a **tuple** (e.g. `[RAW, REW] = mcd(Y)` → `(dict, dict)`).
+
+### Why it runs through the MATLAB *workspace*
+
+A MATLAB `table`/`timetable`, or a 2-D (`M×N`) `cell`, **cannot be returned to Python by the engine at
+all**. So `call`/`eval` do not `feval` directly — they assign inputs to workspace temporaries, run the
+statement in the MATLAB **workspace**, and decode the outputs *MATLAB-side* into Python-friendly
+structures. Function and option names interpolated into that statement are validated against
+`_IDENT_RE` first (an injection guard).
+
+### Marshalling map
+
+| MATLAB value | crosses as | notes |
+|---|---|---|
+| numeric / logical array | `numpy.ndarray` | natural shape preserved, `NaN`/`Inf` kept |
+| `struct` | `dict` | recursed |
+| nested struct of arrays | `dict` of `dict`s of ndarrays | recursed |
+| `char` / `string` scalar | `str` | |
+| `cell` (row/col) | `list` | |
+| `table` / `timetable` | `dict` `{VariableNames, RowNames`/`RowTimes, data, height}` | decoded in the workspace (`_table_to_dict`); columns read by **index**, never by name |
+| 2-D `cell` (`M×N`) | nested `list` | decoded element-by-element (`_marshal_cell2d`) |
+| `struct` *holding* any of the above | `dict`, field-by-field | fallback path (`_marshal_struct`) |
+| graphics handle (`matlab.graphics.*`) | **not marshalled** | see the contract below |
+
+### Boundary conventions (where ports silently break)
+
+- **1-D input → MATLAB row** (`1×n`). Pass an `(n, 1)` array when a routine wants a column (e.g. a
+  response `y`). This is the single documented input convention.
+- **No silent reshape** on output — values come back in MATLAB's natural shape; the caller squeezes if
+  it wants `(n,)`.
+- MATLAB is **column-major** and **1-based**. An index returned from MATLAB stays 1-based until the
+  language surface converts it — never hand it to Python as if it were 0-based.
+
+### Fallback decode
+
+`_marshal_var` tries the **fast whole-value read** first (`eng.workspace[var]`), so ordinary
+numeric/struct outputs are untouched. Only if that read fails does it fall back to decomposing a
+`struct` field-by-field or a 2-D `cell` element-by-element. This fallback was built from evidence — a
+real Python-side `ValueError` when `tclustIC` returned a 2-D cell — not speculation.
+
+### Graphics-handle contract
+
+Graphics handle objects are **never marshalled, because they are never requested**. Plotting routines
+(the whole `toolbox/graphics` folder) are called with `nargout=0` for their side effect, or with
+`nargout` tuned to return only their **data** outputs (e.g. `distribspec` → take `p`, drop the handle
+`h`; `histFS` → take counts `ng`, drop the bar handles `hb`). A handle riding *inside* a returned
+struct (e.g. `boxplotb.handles`) crosses harmlessly as an empty array. See `CONSTITUTION.md` §4.
+
+---
+
+## 3. The Julia and R surfaces
+
+Both are adapters over the Python engine — the actual MATLAB/FSDA call always stays in `engine.py`.
+
+- **Julia** (`engine.jl`, spec 017): uses **PythonCall**. Because PythonCall never auto-converts, it
+  carries a recursive `_py2jl` (Python dict/array/list/str/bool → Julia) and `_to_py` (Julia arrays →
+  numpy). PythonCall binds its interpreter once at `using PythonCall`, so the engine pins it to the
+  resolved venv *before* that point — switch interpreters by starting a fresh `julia`.
+- **R** (`engine.R`, spec 018): uses **reticulate** with `convert = TRUE`, which auto-converts both
+  directions, so no recursive converter is needed. The call surface is `fsda_call` (not `call`, which
+  would mask `base::call`) and `eval_m`; cleanup uses `on.exit` (avoid `<<-` onto the locked
+  `base::diag`).
+
+---
+
+## 4. Agreement gate and the check suites
+
+**Definition of done:** for fixed inputs, a surface must reproduce the genuine FSDA output to a stated
+tolerance (default **`1e-9`**) — same values, same flagged units, same structure. Randomized FSDA
+steps (subsampling) are seed-controlled across the bridge. A port not checked against the oracle is
+**not done**.
+
+The generic engine is exercised by `check_engine.py`, `check_engine.jl`, and `check_engine.R` — the
+same **25 cases** in all three languages, currently **25/25 PASS everywhere**. The suite is the living
+specification of exactly what crosses the boundary:
+
+| Cases | Marshalling path proven |
+|---|---|
+| 1 · mahalFS | numeric array → ndarray |
+| 2–3 · Score, constructed | struct → dict; nested struct of arrays |
+| 4 (+) · FSR, FSRaddt | char scalar + struct; committed forward-search gold |
+| 5–7 · array2table, univariatems, corrNominal | `table`/`timetable` → dict; struct carrying table fields |
+| 8–11 · FSM, mcd, pcaFS, CressieRead | struct tail vs bootstrapped gold; `nargout=2` tuples |
+| 12–14 · logfactorial, tabulateFS, TBwei | scalar / matrix / vector oracles (`utilities_stat`) |
+| 15–16 · GowerIndex, tclustIC | matrix + table (nargout=2); **2-D cell → nested list** |
+| 17–21 · removeExtraSpacesLF … lexunrank | string I/O; `utilities` / `combinatorial` numerics |
+| 22 · publishFS | struct with a 2-D-cell arg table + empty `MException` |
+| 23–25 · distribspec, histFS, boxplotb | **graphics, data outputs only** (handles never requested) |
+
+Oracles are one of: an **inline numpy/stdlib** computation, a **committed / bootstrapped gold** CSV
+(for routines with no cheap independent oracle, e.g. forward searches), or a **structural** check (for
+stochastic routines, assert shape/labels not exact values). Golds live under each target's
+`reference/` folder and are read read-only.
+
+Run the three generic gates (each boots MATLAB once, calls real FSDA, prints per-case `PASS`/`FAIL`):
 
 ```bash
-# macOS / Linux, venv activated
-python code/mahalFS/check_mahalFS.py
+python  code/fsda_engine/check_engine.py
+julia --project=code/fsda_engine code/fsda_engine/check_engine.jl
+Rscript code/fsda_engine/check_engine.R
 ```
 
-Prefer not to activate? Point `FSDA_DEV_VENV` at the venv's **python executable** once — it survives
-new shells:
+---
 
-```powershell
-# Windows: persists for future shells (not the current one)
-setx FSDA_DEV_VENV "C:\path\to\your\fsda_dev_env\Scripts\python.exe"
-```
+## 5. Per-routine prototypes (legacy / bespoke)
+
+Before the generic engine, each routine had its own `code/<target>/bridge.{py,jl,R}` +
+`check_<target>{.py,_jl.jl,_r.R}`. They are kept for history and for routines that need bespoke
+handling; **new work should prefer the generic engine.**
+
+| Folder | FSDA routine | Why it exists |
+|---|---|---|
+| `code/mahalFS/` | `mahalFS` | first worked example — Mahalanobis distances (specs 001–003) |
+| `code/Score/` | `Score` | Box-Cox score-test struct (specs 004–006) |
+| `code/FSR/` | `FSR` | Forward Search Regression (specs 007–009) |
+| `code/FSRaddt/` | `FSRaddt` | added-variable deletion t-test (specs 010–012) |
+| `code/getYahoo/` | `getYahoo` | **bespoke** — struct-array / timetable return over live market data; checked with fixed inputs and a fixed historical window (specs 013–015) |
+
+`getYahoo` is the one return shape the generic engine deliberately does **not** cover (struct-arrays /
+datetime scalars), so it keeps its own bridge.
+
+---
+
+## 6. How coverage grew — the folder-sweep method
+
+Recent iterations added coverage by sweeping whole FSDA toolbox folders with a repeatable loop:
+
+1. **Bucket** every function in a folder by output type (numeric / struct / table / cell / graphics …).
+2. **Probe** the representative shapes empirically through `FsdaEngine.call` in a throwaway script.
+3. **Classify failures by origin.** A `MatlabExecutionError` is MATLAB rejecting inputs — *not* a
+   marshalling gap. Only a Python-side conversion error / opaque return is a real gap.
+4. **Change the engine only on a confirmed gap.** Across `/regression`, `/multivariate`,
+   `/utilities_stat`, `/clustering`, `/utilities`, `/combinatorial`, `/utilities_help`, `/graphics`,
+   exactly one real gap surfaced (the 2-D cell) — everything else already crossed.
+5. **Add a few deterministic committed checks**, then **mirror them** into the Julia and R gates.
+
+---
+
+## 7. Requirements & toolchain (pinned)
+
+| Component | Pin |
+|---|---|
+| MATLAB | **R2026a** with the **FSDA Add-On** installed (verify `which mahalFS` inside MATLAB) |
+| Python | **3.12.10** in a venv, with `numpy` and `matlabengine==26.1.*` (from PyPI) |
+| Julia | any recent Julia with **PythonCall** (project: `code/fsda_engine/Project.toml`) |
+| R | any recent R with **reticulate** |
+
+`matlab.engine` is locked to the installed MATLAB release — keep the MATLAB ↔ engine-package versions
+paired. The bridge resolves the Python interpreter in this order, so nothing machine-specific is
+committed: **(a)** an activated venv, **(b)** the `FSDA_DEV_VENV` env var (point it at the venv's
+*python executable*), **(c)** `python` / `python3` on `PATH`.
+
+---
+
+## 8. Setup
 
 ```bash
-# macOS / Linux: add to ~/.zshrc (or ~/.bashrc)
-export FSDA_DEV_VENV="/path/to/your/fsda_dev_env/bin/python"
+# macOS / Linux — from the repo root
+python3 -m venv .venv && source .venv/bin/activate
+python -m pip install --upgrade pip
+python -m pip install numpy "matlabengine==26.1.*"
 ```
-
-It starts a MATLAB engine, calls the genuine FSDA `mahalFS`, compares against a pure-numpy reference,
-and prints `PASS` when they agree to `< 1e-9`.
-
-## Language surfaces (Julia, R)
-
-The Python bridge (`code/mahalFS/bridge.py`) is reused **verbatim** under two Layer-2 surfaces, so each
-calls the genuine FSDA routine *through* it rather than re-implementing the marshalling:
-
-- **Julia → PythonCall → Python → matlab.engine → FSDA** (spec 002) — `code/mahalFS/bridge.jl`, check
-  `code/mahalFS/check_mahalFS_jl.jl`.
-- **R → reticulate → Python → matlab.engine → FSDA** (spec 003) — `code/mahalFS/bridge.R`, check
-  `code/mahalFS/check_mahalFS_r.R`.
-
-Both need the same MATLAB + FSDA + `matlabengine` venv as the Python quickstart; point `FSDA_DEV_VENV`
-at the venv's python (the resolution order is the same). Each check loads the spec-001 gold CSV
-(`reference/mahalFS_check.csv`) as the oracle and prints `PASS` when the surface agrees to `< 1e-9`.
-
-Run the **Julia** check (needs Julia with the `PythonCall` package):
 
 ```powershell
-# Windows (PowerShell)
-julia --project=code\mahalFS -e 'import Pkg; Pkg.instantiate()'   # PythonCall, once
-$env:FSDA_DEV_VENV = (Get-Command python).Source
-julia --project=code\mahalFS code\mahalFS\check_mahalFS_jl.jl
+# Windows PowerShell
+python -m venv .venv; .venv\Scripts\Activate.ps1
+python -m pip install --upgrade pip
+python -m pip install numpy "matlabengine==26.1.*"
 ```
 
+For the Julia and R gates, point `FSDA_DEV_VENV` at that same interpreter so PythonCall / reticulate
+bind to the venv the MATLAB Engine API uses, and instantiate the surface deps once:
+
 ```bash
-# macOS / Linux (bash)
-julia --project=code/mahalFS -e 'import Pkg; Pkg.instantiate()'   # PythonCall, once
 export FSDA_DEV_VENV="$(command -v python)"
-julia --project=code/mahalFS code/mahalFS/check_mahalFS_jl.jl
+julia --project=code/fsda_engine -e 'import Pkg; Pkg.instantiate()'   # PythonCall, once
+Rscript -e 'install.packages("reticulate")'                          # once, if missing
 ```
 
-> PythonCall binds its interpreter once, at `using PythonCall`. `bridge.jl` pins it to the resolved
-> venv before that point, so to switch interpreters start a fresh `julia` process.
+Then run the three gates from §4. Per-routine checks (appendix):
 
-## How to work here
+```bash
+python  code/mahalFS/check_mahalFS.py          # or Score / FSR / FSRaddt / getYahoo
+julia --project=code/mahalFS code/mahalFS/check_mahalFS_jl.jl
+Rscript code/mahalFS/check_mahalFS_r.R
+```
 
-1. Read `CONSTITUTION.md` (the rules) and `AGENTS.md` (how agents should behave).
-2. Pick an open spec under `specs/`, or copy `specs/TEMPLATE.md` to `specs/NNN-<slug>.md` and write its
-   Contract / Design / Tasks.
-3. Do the Tasks. Code goes in `code/<target>/`. The **agreement gate** (match FSDA to tolerance) is the
-   definition of done.
-4. Commit in scoped chunks; reference the spec number.
+---
+
+## 9. Repository layout
+
+```text
+.
+├── README.md          ← this file
+├── CONSTITUTION.md    ← binding contract: toolchain, architecture, marshalling, agreement gate
+├── AGENTS.md          ← how any AI/human contributor works in this repo
+├── specs/
+│   ├── TEMPLATE.md
+│   └── 001-*.md … 018-*.md      ← one spec per unit of work (Contract + Design + Tasks)
+└── code/
+    ├── fsda_engine/            ← the generic engine (preferred)
+    │   ├── engine.py / engine.jl / engine.R
+    │   ├── check_engine.py / check_engine.jl / check_engine.R
+    │   └── reference/          ← golds + shared fixtures (e.g. FSM_Y.csv)
+    ├── mahalFS/  Score/  FSR/  FSRaddt/          ← per-routine prototypes
+    └── getYahoo/                                 ← bespoke (struct-array / timetable)
+```
+
+---
+
+## 10. Governance & working model
+
+1. Read **`CONSTITUTION.md`** (the contract) and **`AGENTS.md`** (how to work) before changing bridge
+   behaviour. The contract wins; a spec may add detail but must not contradict it.
+2. Work inside a spec under `specs/`, or copy `specs/TEMPLATE.md` to `specs/NNN-<slug>.md` and write
+   its `Contract` / `Design` / `Tasks` first.
+3. Put code under `code/fsda_engine/` (generic work) or the relevant `code/<target>/`.
+4. **The agreement gate is the definition of done** — a change that does not pass its check is not
+   finished. Commit in scoped chunks that reference the spec number; record what was learned in the
+   spec.
+5. Keep the repo machine-neutral: never commit venv paths, MATLAB install paths, or other absolute
+   paths.
