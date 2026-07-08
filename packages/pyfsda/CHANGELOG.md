@@ -4,6 +4,16 @@ All notable changes to `pyfsda` are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [0.2.0] — unreleased
+
+### Added
+- **Functional façade:** call any FSDA routine as a top-level function, e.g.
+  `pyfsda.Score(y, X, la=..., intercept=True)` or `pyfsda.mahalFS(Y, MU, SIGMA)` — the shared MATLAB
+  session starts lazily on first use and is reused. Backed by a module-level `__getattr__`, so it
+  covers every FSDA routine with no per-function code; `from pyfsda import Score` works too.
+- Session helpers `pyfsda.start(...)`, `pyfsda.stop()`, `pyfsda.engine()`; the engine is also stopped
+  at interpreter exit. Unknown routine names raise a clear `AttributeError` (typo guard).
+
 ## [0.1.0] — unreleased
 
 ### Added
