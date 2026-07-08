@@ -35,6 +35,16 @@ pip install pyfsda
 pip install "matlabengine==26.1.*"     # example: MATLAB R2026a
 ```
 
+## Verify your install
+
+Run [`examples/smoke_test.py`](examples/smoke_test.py) — it starts MATLAB and checks a few real FSDA
+routines against numpy oracles, printing `RESULT: PASS` when your MATLAB + FSDA + `matlabengine` setup
+is good:
+
+```bash
+python smoke_test.py                 # or:  python smoke_test.py /path/to/FSDA
+```
+
 ## What crosses the boundary
 
 `call(name, *args, nargout=1, echo_output=False, options=None, **kwargs)` marshals positional
