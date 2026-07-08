@@ -1,0 +1,68 @@
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
+[project]
+name = "pyfsda"
+dynamic = ["version"]
+description = "Call FSDA (MATLAB robust-statistics toolbox) routines from Python via the MATLAB Engine."
+readme = "README.md"
+requires-python = ">=3.9"
+license = "EUPL-1.2"
+license-files = ["LICENSE"]
+authors = [
+    { name = "Aldo Corbellini", email = "aldo.corbellini@gmail.com" },
+    { name = "FSDA team" },
+]
+maintainers = [
+    { name = "Aldo Corbellini", email = "aldo.corbellini@gmail.com" },
+]
+keywords = [
+    "fsda",
+    "matlab",
+    "matlab engine",
+    "robust statistics",
+    "forward search",
+    "outlier detection",
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Science/Research",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Scientific/Engineering",
+    "Topic :: Scientific/Engineering :: Mathematics",
+    "Typing :: Typed",
+]
+# numpy is a hard dependency. matlabengine is required but is version-locked to the
+# installed MATLAB release, so it is left UNPINNED here -- install/keep the version that
+# matches your MATLAB (e.g. `pip install "matlabengine==26.1.*"` for R2026a). See the README.
+dependencies = [
+    "numpy>=1.22",
+    "matlabengine",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=7", "build", "twine"]
+
+[project.urls]
+Homepage = "https://github.com/UniprJRC/FSDA"
+# TODO: point Repository/Issues at the dedicated pyfsda package repository once it exists.
+Repository = "https://github.com/UniprJRC/FSDA"
+Issues = "https://github.com/UniprJRC/FSDA/issues"
+
+[tool.hatch.version]
+path = "src/pyfsda/__init__.py"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/pyfsda"]
+
+[tool.pytest.ini_options]
+markers = [
+    "integration: requires a running MATLAB with the FSDA Add-On (deselect with -m 'not integration')",
+]

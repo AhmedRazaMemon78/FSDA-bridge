@@ -1,0 +1,57 @@
+name: build & publish
+
+# CI cannot run the MATLAB-dependent tests (GitHub runners have no MATLAB), so it
+# always builds + metadata-checks the distribution, and runs the marshalling unit
+# tests best-effort: they need only the `matlabengine` *client*, which may or may not
+# install on a bare runner -- if it cannot, those tests skip themselves. The
+# integration test (a real MATLAB) never runs in CI. Publishing uses PyPI trusted
+# publishing (OIDC) on a v* tag -- no API token. One-time setup: register this repo +
+# workflow as a Trusted Publisher for `pyfsda` on PyPI.
+
+on:
+  push:
+    branches: [main, master]
+    tags: ["v*"]
+  pull_request:
+
+defaults:
+  run:
+    working-directory: packages/pyfsda
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Build sdist + wheel and check metadata
+        run: |
+          python -m pip install --upgrade pip build twine
+          python -m build
+          twine check dist/*
+      - name: Unit tests (best-effort; needs the matlabengine client)
+        run: |
+          pip install --no-deps dist/*.whl
+          pip install numpy pytest
+          pip install matlabengine || echo "matlabengine unavailable on runner -> marshalling tests will skip"
+          pytest -m "not integration" -q
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: packages/pyfsda/dist/*
+
+  publish:
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      id-token: write          # OIDC token for PyPI trusted publishing
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist
+      - uses: pypa/gh-action-pypi-publish@release/v1
