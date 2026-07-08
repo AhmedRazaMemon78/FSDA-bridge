@@ -3,7 +3,12 @@
 Run locally with:  pytest -m integration
 It is deselected by the default ``-m "not integration"`` and skips itself when MATLAB /
 FSDA cannot be started.
+
+If FSDA is not on the runner's default MATLAB path, set ``PYFSDA_FSDA_ROOT`` to the FSDA
+install/checkout dir; it is forwarded to ``FsdaEngine.start(fsda_root=...)``.
 """
+import os
+
 import numpy as np
 import pytest
 
@@ -14,8 +19,9 @@ from pyfsda import FsdaEngine
 @pytest.mark.integration
 def test_mahalfs_matches_numpy():
     """mahalFS(Y, MU, SIGMA) must equal the numpy Mahalanobis oracle to 1e-9."""
+    fsda_root = os.environ.get("PYFSDA_FSDA_ROOT") or None
     try:
-        eng = FsdaEngine.start("mahalFS", check_version=False)
+        eng = FsdaEngine.start("mahalFS", fsda_root=fsda_root, check_version=False)
     except Exception as exc:                      # no MATLAB / FSDA on this machine
         pytest.skip(f"MATLAB with FSDA not available: {exc}")
     try:

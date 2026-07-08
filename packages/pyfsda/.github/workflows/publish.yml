@@ -1,18 +1,26 @@
 name: build & publish
 
-# CI cannot run the MATLAB-dependent tests (GitHub runners have no MATLAB), so it
-# always builds + metadata-checks the distribution, and runs the marshalling unit
-# tests best-effort: they need only the `matlabengine` *client*, which may or may not
-# install on a bare runner -- if it cannot, those tests skip themselves. The
-# integration test (a real MATLAB) never runs in CI. Publishing uses PyPI trusted
-# publishing (OIDC) on a v* tag -- no API token. One-time setup: register this repo +
-# workflow as a Trusted Publisher for `pyfsda` on PyPI.
+# Two kinds of runner, for a reason:
+#
+#  * build (GitHub-hosted): always builds + metadata-checks the distribution and runs the
+#    marshalling UNIT tests best-effort (they need only the `matlabengine` client, which may or
+#    may not install on a bare runner -- if it cannot, those tests skip themselves).
+#
+#  * integration (SELF-HOSTED): the matlab.engine tests drive real MATLAB via the MATLAB Engine
+#    API for Python. MathWorks batch licensing -- the only licensing available on GitHub-hosted
+#    runners, with or without an MLM_LICENSE_TOKEN -- does NOT license external language
+#    interfaces (Engine API for Python/Java/.NET/C/C++/Fortran). So these tests can ONLY run on a
+#    self-hosted runner whose MATLAB is licensed WITHOUT a batch token. See CONTRIBUTING.md.
+#
+# Publishing uses PyPI trusted publishing (OIDC) on a v* tag -- no API token. One-time setup:
+# register this repo + workflow as a Trusted Publisher for `pyfsda` on PyPI.
 
 on:
   push:
     branches: [main, master]
     tags: ["v*"]
   pull_request:
+  workflow_dispatch:
 
 defaults:
   run:
@@ -42,8 +50,29 @@ jobs:
           name: dist
           path: packages/pyfsda/dist/*
 
+  integration:
+    # SECURITY: a self-hosted runner executes the job on YOUR machine. Run it on push / manual
+    # dispatch ONLY -- never on `pull_request`, or an untrusted fork PR would run arbitrary code
+    # on the runner. Do not remove this guard.
+    if: github.event_name != 'pull_request'
+    runs-on: [self-hosted, macOS, pyfsda-matlab]
+    env:
+      # Optional: set repo variable PYFSDA_FSDA_ROOT if FSDA is not on the runner's default
+      # MATLAB path. Empty -> the test relies on the machine's default path.
+      PYFSDA_FSDA_ROOT: ${{ vars.PYFSDA_FSDA_ROOT }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Full test suite on the licensed MATLAB machine
+        run: |
+          rm -rf .ci-venv
+          python3 -m venv --system-site-packages .ci-venv   # inherit the machine's matlabengine
+          ./.ci-venv/bin/python -m pip install --upgrade pip
+          ./.ci-venv/bin/pip install --no-deps .            # install pyfsda; numpy/matlabengine from system
+          ./.ci-venv/bin/pip install numpy pytest
+          ./.ci-venv/bin/pytest -q                          # unit + integration (this machine has MATLAB)
+
   publish:
-    needs: build
+    needs: build          # a release never waits on the self-hosted integration job
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     environment: pypi
