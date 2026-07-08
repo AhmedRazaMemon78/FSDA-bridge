@@ -45,6 +45,10 @@ is good:
 python smoke_test.py                 # or:  python smoke_test.py /path/to/FSDA
 ```
 
+For a worked, MATLAB-style example, see [`examples/score_example.py`](examples/score_example.py) — the
+Box-Cox `Score` test on the wool dataset, calling `Score(y, X, 'la', ..., 'intercept', true)` the same
+way you would in MATLAB.
+
 ## What crosses the boundary
 
 `call(name, *args, nargout=1, echo_output=False, options=None, **kwargs)` marshals positional
