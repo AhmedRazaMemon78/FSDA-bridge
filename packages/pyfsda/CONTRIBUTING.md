@@ -51,3 +51,45 @@ A self-hosted runner executes workflow code **on your machine**. The `integratio
 gated `if: github.event_name != 'pull_request'` and runs only on `push` / `workflow_dispatch`. **Never**
 enable it for `pull_request` events on a public repository — a fork's PR could run arbitrary code on
 your runner. Keep the guard in place.
+
+## Releasing to PyPI (manual, with twine)
+
+Publishing is **irreversible**: a given version/filename can never be re-uploaded and the name is
+claimed permanently. Always validate on **TestPyPI** first.
+
+### One-time: accounts + tokens
+1. Create accounts on <https://test.pypi.org> and <https://pypi.org> and generate an **API token** on
+   each (Account settings → API tokens).
+2. Store them in `~/.pypirc` (chmod 600), never in the repo:
+
+   ```ini
+   [distutils]
+   index-servers =
+       pypi
+       testpypi
+
+   [pypi]
+   username = __token__
+   password = pypi-XXXXXXXX            # your real-PyPI token
+
+   [testpypi]
+   username = __token__
+   password = pypi-YYYYYYYY            # your TestPyPI token
+   ```
+
+### Each release
+```bash
+cd packages/pyfsda
+rm -rf dist
+python -m build                        # fresh sdist + wheel into dist/
+twine check dist/*                     # metadata + README render must PASS
+
+# 1) DRY-RUN on TestPyPI, then eyeball https://test.pypi.org/project/pyfsda/
+twine upload -r testpypi dist/*
+
+# 2) only once TestPyPI looks right: publish to real PyPI
+twine upload dist/*
+```
+
+A version can only be uploaded **once** to each index (TestPyPI included) — if you need to re-test after
+a fix, bump the version (e.g. `0.1.1`) in `src/pyfsda/__init__.py` and rebuild.
