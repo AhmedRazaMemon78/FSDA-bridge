@@ -5,13 +5,27 @@ Analysis* toolbox for robust statistics — from **Python**, using the MATLAB En
 computational backend. FSDA runs unmodified in MATLAB; `pyfsda` is a thin, routine-agnostic bridge
 that marshals data across the boundary.
 
+Call any FSDA routine as a plain Python function — the MATLAB session starts on first use and is
+reused:
+
+```python
+import pyfsda
+
+d   = pyfsda.mahalFS(Y, MU, SIGMA)                # numeric array -> numpy ndarray
+out = pyfsda.Score(y, X, la=la, intercept=True)  # struct        -> dict  (MATLAB-style options)
+RAW, REW = pyfsda.mcd(Y, nargout=2)             # two outputs   -> tuple
+pyfsda.stop()                                     # optional; also runs automatically at exit
+```
+
+`pyfsda.<name>` works for **any** FSDA function (`from pyfsda import Score` works too). Prefer managing
+the session yourself? Use the explicit engine:
+
 ```python
 from pyfsda import FsdaEngine
 
-eng = FsdaEngine.start("mahalFS")                      # boot MATLAB, check the routine is on the path
-d   = eng.call("mahalFS", Y, MU, SIGMA)                # numeric array  -> numpy ndarray
-out = eng.call("Score", y, X, la=la, intercept=True)  # struct         -> dict
-eng.stop()                                             # shut the (slow-to-start) session down
+eng = FsdaEngine.start("mahalFS")
+d   = eng.call("mahalFS", Y, MU, SIGMA)
+eng.stop()
 ```
 
 ## Requirements

@@ -67,6 +67,10 @@ def main() -> int:
         # MATLAB:  outSC = Score(y, X, 'la', [-1 -0.5 0 0.5 1], 'intercept', true)
         out = eng.call("Score", y, X, la=LA, intercept=True)   # struct -> dict
         # (the bare default form is simply:  out = eng.call("Score", y, X) )
+        #
+        # Even simpler, with no explicit session (the shared engine starts on first use):
+        #     import pyfsda
+        #     out = pyfsda.Score(y, X, la=LA, intercept=True)
 
         score = np.asarray(out["Score"], dtype=float).reshape(-1)
         best = int(np.argmin(np.abs(score)))
