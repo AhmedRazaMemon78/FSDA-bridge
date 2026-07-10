@@ -1,15 +1,55 @@
-# FSDA language bridges — Python · Julia · R
+# FSDA-bridge — call FSDA from Python (and Julia · R)
 
-A local research prototype for calling routines from **[FSDA](https://github.com/UniprJRC/FSDA)** (a
-MATLAB robust-statistics toolbox) from **Python**, **Julia**, and **R**, while keeping the original
-MATLAB FSDA code as the unmodified computational backend. The goal is to learn how the bridge behaves
-on real routines and where data marshalling breaks — **not** to ship a package in the current state.
-There is no build, no CI, no heavy dependencies.
+Call routines from **[FSDA](https://github.com/UniprJRC/FSDA)** (a MATLAB robust-statistics toolbox)
+from **Python**, keeping the original MATLAB FSDA code as the unmodified computational backend. This
+repo holds two things:
 
-Work is **spec-driven**: `CONSTITUTION.md` fixes the rules common to every unit of work, `AGENTS.md`
-tells any AI/human contributor how to work here, and each task is one file under `specs/`.
+- **`pyfsda`** (`packages/pyfsda/`) — an **installable Python package**: `import pyfsda` and call any
+  FSDA routine as `pyfsda.Score(y, X, ...)`. It has its own build, tests, examples, and CI, and is
+  published to TestPyPI (real PyPI to follow). **Start here if you just want to use FSDA from Python.**
+- **The research prototype** (`code/`, `specs/`) it was distilled from — a spec-driven study of the
+  Python↔MATLAB bridge, including thin **Julia** (PythonCall) and **R** (reticulate) surfaces over the
+  same engine. This is **no build / no CI** by design (see §1–10 below for the internals). Work here is
+  spec-driven: `CONSTITUTION.md` fixes the rules, `AGENTS.md` says how to contribute, one file per task
+  under `specs/`.
 
 ---
+
+## Using `pyfsda`
+
+**Requirements:** MATLAB with the FSDA Add-On on the path, and `matlabengine` **matching your MATLAB
+release** (e.g. `pip install "matlabengine==26.1.*"` for R2026a; a different MATLAB needs its paired
+version). Python 3.9–3.13.
+
+**Install** (currently on TestPyPI; deps aren't mirrored there, so `--no-deps`):
+
+```bash
+pip install -i https://test.pypi.org/simple/ pyfsda==0.2.0 --no-deps
+# once it's on real PyPI:  pip install pyfsda
+```
+
+**Call any FSDA routine as a Python function** — the MATLAB session starts on first use and is reused:
+
+```python
+import pyfsda
+
+d   = pyfsda.mahalFS(Y, MU, SIGMA)               # numeric array -> numpy ndarray
+out = pyfsda.Score(y, X, la=la, intercept=True)  # struct        -> dict (MATLAB-style options)
+RAW, REW = pyfsda.mcd(Y, nargout=2)             # two outputs   -> tuple
+pyfsda.stop()                                     # optional; also runs at exit
+```
+
+`pyfsda.<name>` works for **any** FSDA routine (and `from pyfsda import Score` too). Prefer managing the
+session yourself? Use the explicit engine: `from pyfsda import FsdaEngine; eng = FsdaEngine.start(...)`.
+
+**Learn more:** runnable [`examples/`](packages/pyfsda/examples/) (`score_example_simple.py`,
+`score_example.py`, `smoke_test.py`), the package [README](packages/pyfsda/README.md), and
+[`CONTRIBUTING.md`](packages/pyfsda/CONTRIBUTING.md) (dev, self-hosted CI, release flow).
+
+---
+
+The rest of this document describes **how the bridge works internally** — the shared engine, the
+marshalling rules, the Julia/R surfaces, and the agreement gates that back all three.
 
 ## 1. Architecture at a glance
 
@@ -290,11 +330,17 @@ Rscript code/mahalFS/check_mahalFS_r.R
 ├── README.md          ← this file
 ├── CONSTITUTION.md    ← binding contract: toolchain, architecture, marshalling, agreement gate
 ├── AGENTS.md          ← how any AI/human contributor works in this repo
+├── packages/
+│   └── pyfsda/                 ← the installable Python package (start here to USE FSDA)
+│       ├── src/pyfsda/         ← __init__.py (functional façade) + engine.py + py.typed
+│       ├── tests/  examples/   ← pytest suite; runnable examples (smoke_test, score_example…)
+│       ├── pyproject.toml  CHANGELOG.md  CONTRIBUTING.md
+│       └── .github/workflows/  ← build + tests (self-hosted MATLAB) + PyPI trusted publishing
 ├── specs/
 │   ├── TEMPLATE.md
 │   └── 001-*.md … 018-*.md      ← one spec per unit of work (Contract + Design + Tasks)
-└── code/
-    ├── fsda_engine/            ← the generic engine (preferred)
+└── code/                        ← the research prototype (how the bridge is built)
+    ├── fsda_engine/            ← the generic engine (the pyfsda engine was distilled from here)
     │   ├── engine.py / engine.jl / engine.R
     │   ├── check_engine.py / check_engine.jl / check_engine.R
     │   └── reference/          ← golds + shared fixtures (e.g. FSM_Y.csv)
