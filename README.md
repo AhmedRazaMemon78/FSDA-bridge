@@ -24,7 +24,7 @@ version). Python 3.9–3.13.
 **Install** (currently on TestPyPI; deps aren't mirrored there, so `--no-deps`):
 
 ```bash
-pip install -i https://test.pypi.org/simple/ pyfsda==0.2.0 --no-deps
+pip install -i https://test.pypi.org/simple/ pyfsda==0.3.0 --no-deps
 # once it's on real PyPI:  pip install pyfsda
 ```
 
