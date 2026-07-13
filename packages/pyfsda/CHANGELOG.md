@@ -4,6 +4,15 @@ All notable changes to `pyfsda` are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [0.3.0] — unreleased
+
+### Added
+- On the **first `pyfsda.<name>(...)` call**, print (once, best-effort) the **latest FSDA release
+  available on GitHub** so you can check your install is current — a stdlib-only query of the FSDA
+  releases API, silent on any failure (offline / rate-limited), and gated by `check_version` (disable
+  with `pyfsda.start(check_version=False)`). This is separate from, and runs alongside, the existing
+  MATLAB-side `tuna` check at engine start.
+
 ## [0.2.0] — unreleased
 
 ### Added

@@ -21,14 +21,19 @@ Explicit session (advanced) — manage the engine yourself::
 
 Requires MATLAB with the FSDA Add-On and a ``matlabengine`` release matching that
 MATLAB (see the README).
+
+On the first call, pyfsda prints (once, best-effort) the latest FSDA release available
+on GitHub, so you can check your install is current. Silence it with
+``pyfsda.start(check_version=False)`` before the first call.
 """
 from __future__ import annotations
 
 import atexit
+import sys
 
 from .engine import FsdaEngine, from_matlab, to_matlab
 
-__version__ = "0.2.0"
+__version__ = "0.3.0"
 
 __all__ = [
     "FsdaEngine", "to_matlab", "from_matlab",
@@ -39,6 +44,10 @@ __all__ = [
 _ENGINE: FsdaEngine | None = None
 _WRAPPERS: dict = {}
 _VALIDATED: set = set()          # FSDA names confirmed on-path for the current engine
+_CHECK_VERSION: bool = True      # set by start(); gates the first-call GitHub version notice
+_LATEST_CHECKED: bool = False    # run-once latch for _notify_latest_fsda
+
+_FSDA_RELEASES_API = "https://api.github.com/repos/UniprJRC/FSDA/releases/latest"
 
 # A few common FSDA routines advertised by __dir__ for REPL discoverability. The
 # __getattr__ mechanism accepts ANY FSDA function name, not just these.
@@ -55,7 +64,8 @@ def start(routine: str | None = None, fsda_root: str | None = None,
     Idempotent: returns the already-running engine on later calls. Call this before the
     first routine only if you need to set ``fsda_root`` or disable ``check_version``.
     """
-    global _ENGINE
+    global _ENGINE, _CHECK_VERSION
+    _CHECK_VERSION = check_version       # also gates the first-call GitHub version notice
     if _ENGINE is None:
         _ENGINE = FsdaEngine.start(routine=routine, fsda_root=fsda_root,
                                    check_version=check_version)
@@ -69,22 +79,54 @@ def engine() -> FsdaEngine:
 
 def stop() -> None:
     """Shut the shared engine down (safe to call when it was never started)."""
-    global _ENGINE
+    global _ENGINE, _LATEST_CHECKED
     if _ENGINE is not None:
         try:
             _ENGINE.stop()
         finally:
             _ENGINE = None
             _VALIDATED.clear()
+            _LATEST_CHECKED = False        # a fresh session re-checks the latest release
 
 
 atexit.register(stop)
+
+
+def _notify_latest_fsda() -> None:
+    """Once per session, print the latest FSDA release available on GitHub (stderr).
+
+    Purely informational and best-effort: it reports the latest `tag_name` from the FSDA
+    GitHub releases API using only the standard library, and stays silent on any failure
+    (offline, rate-limited, blocked). It does NOT compare against the installed version.
+    Runs on the first `pyfsda.<name>(...)` call and is gated by `check_version` (disable
+    with `pyfsda.start(check_version=False)`). Separate from `engine.py`'s `tuna` check.
+    """
+    global _LATEST_CHECKED
+    if _LATEST_CHECKED or not _CHECK_VERSION:
+        return
+    _LATEST_CHECKED = True                  # latch up front: never retry on failure
+    try:
+        import json
+        import urllib.request
+
+        with urllib.request.urlopen(_FSDA_RELEASES_API, timeout=4.0) as resp:
+            tag = json.load(resp).get("tag_name")
+        if tag:
+            sys.stderr.write(
+                f"pyfsda: latest FSDA release on GitHub is {tag} "
+                f"(https://github.com/UniprJRC/FSDA/releases/tag/{tag}). "
+                f"Ensure your installed FSDA is current.\n"
+            )
+            sys.stderr.flush()
+    except Exception:
+        pass                                # never let a courtesy check break a call
 
 
 def _make_wrapper(name: str):
     """Build (and cache) a callable that runs FSDA `name` on the shared engine."""
     def _fsda_call(*args, **kwargs):
         eng = engine()
+        _notify_latest_fsda()                          # once: latest FSDA release on GitHub
         if name not in _VALIDATED:                     # verify once per name (typo guard)
             if not eng.which(name):
                 raise AttributeError(

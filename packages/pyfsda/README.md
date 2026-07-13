@@ -88,8 +88,11 @@ Reserved keywords consumed by the bridge are only `nargout`, `echo_output`, and 
 keyword is forwarded to MATLAB (so FSDA's own `msg` option passes straight through). `echo_output=True`
 tees MATLAB's stdout/stderr to your terminal.
 
-`FsdaEngine.start()` also runs a best-effort FSDA up-to-date check via FSDA's `tuna` utility (quiet
-unless an update is available); disable it with `FsdaEngine.start(check_version=False)`.
+On the **first `pyfsda.<name>(...)` call**, pyfsda also prints (once, best-effort) the **latest FSDA
+release available on GitHub**, so you can check your install is current. `FsdaEngine.start()`
+additionally runs a MATLAB-side FSDA up-to-date check via FSDA's `tuna` utility (quiet unless an update
+is available). Both are gated by `check_version` — silence them with
+`pyfsda.start(check_version=False)` (or `FsdaEngine.start(check_version=False)`) before the first call.
 
 ## Notes
 
