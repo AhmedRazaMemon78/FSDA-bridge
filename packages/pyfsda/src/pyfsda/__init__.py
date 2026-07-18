@@ -25,6 +25,11 @@ MATLAB (see the README).
 On the first call, pyfsda prints (once, best-effort) the latest FSDA release available
 on GitHub, so you can check your install is current. Silence it with
 ``pyfsda.start(check_version=False)`` before the first call.
+
+Optional pandas view (``pip install pyfsda[pandas]``): pass ``frames=True`` to receive
+table/timetable outputs as a ``pandas.DataFrame`` (``out = pyfsda.univariatems(y, X,
+frames=True)``), and pass a ``pandas.DataFrame`` argument to send a MATLAB ``table`` in.
+The default return is still the neutral dict -- the cross-language contract is unchanged.
 """
 from __future__ import annotations
 
@@ -32,11 +37,13 @@ import atexit
 import sys
 
 from .engine import FsdaEngine, from_matlab, to_matlab
+from .frames import is_table_dict, to_dataframe
 
-__version__ = "0.3.0"
+__version__ = "0.4.0"
 
 __all__ = [
     "FsdaEngine", "to_matlab", "from_matlab",
+    "to_dataframe", "is_table_dict",
     "start", "stop", "engine", "__version__",
 ]
 

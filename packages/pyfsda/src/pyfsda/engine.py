@@ -54,14 +54,17 @@ import numpy as np
 import matlab
 import matlab.engine
 
+from .frames import apply_frames, is_dataframe
+
 # call() reserves these keyword names for its own control; every OTHER keyword is
 # forwarded to MATLAB as a name/value pair. Notably `msg` is NOT reserved -- it
 # passes straight through to FSDA (FSR/FSRaddt/getYahoo each have their own `msg`
 # option). The bridge's stdout/stderr tee is `echo_output`, deliberately named so
-# it cannot collide with an FSDA option. The rare case where an FSDA option's name
-# does collide with one of these reserved words is handled via the `options` dict:
+# it cannot collide with an FSDA option. `frames` is the opt-in pandas view (see
+# call()). The rare case where an FSDA option's name does collide with one of these
+# reserved words is handled via the `options` dict:
 #     eng.call("FSR", y, X, options={"nargout": ...})
-_RESERVED_CALL_KWARGS = ("nargout", "echo_output", "options")
+_RESERVED_CALL_KWARGS = ("nargout", "echo_output", "options", "frames")
 
 # call()/eval() execute through the MATLAB workspace (so table/timetable outputs --
 # which the engine cannot return directly -- can be decomposed MATLAB-side). The
@@ -93,6 +96,10 @@ def to_matlab(x):
     int/float -> float.   str -> str (char).   list/tuple of numbers -> row matlab.double.
     Anything else is passed through untouched (already a matlab.* type, etc.).
     """
+    if is_dataframe(x):
+        raise TypeError(
+            "pandas.DataFrame inputs are marshalled to a MATLAB table by call() -- "
+            "pass a DataFrame as a positional/option argument to call(), not to to_matlab().")
     if isinstance(x, np.ndarray):
         a = np.asarray(x, dtype=float)
         if a.ndim == 0:
@@ -215,7 +222,7 @@ class FsdaEngine:
 
     # --- the generic call ----------------------------------------------------
     def call(self, name: str, *args, nargout: int = 1, echo_output: bool = False,
-             options: dict | None = None, **kwargs):
+             options: dict | None = None, frames: bool = False, **kwargs):
         """Call FSDA function `name` generically and return plain Python.
 
         Positional `args` are marshalled with `to_matlab` and passed in order.
@@ -231,6 +238,13 @@ class FsdaEngine:
                       is the bridge's OWN tee, named so it cannot clash with an FSDA
                       option; it does not change what FSDA prints, only whether an
                       embedded host (reticulate / PythonCall) surfaces it.
+        frames      : when True, table/timetable outputs (the dict returned by
+                      `_table_to_dict`) are returned as a `pandas.DataFrame` instead
+                      -- an opt-in Python-only view; the dict is still the default and
+                      the cross-language contract (needs `pip install pyfsda[pandas]`).
+
+        A `pandas.DataFrame` passed as a positional/option argument is marshalled to a
+        MATLAB `table` (see `_df_to_table_var`), independent of the `frames` flag.
 
         Execution runs through the MATLAB workspace so outputs the engine cannot
         return directly -- a **table / timetable** -- can be decomposed MATLAB-side
@@ -251,12 +265,18 @@ class FsdaEngine:
         in_names, opt_tokens, temp = [], [], []
         for i, a in enumerate(args):
             vn = f"fe_in{i}"
-            ws[vn] = to_matlab(a)
+            if is_dataframe(a):
+                self._df_to_table_var(a, vn)      # DataFrame -> MATLAB table
+            else:
+                ws[vn] = to_matlab(a)
             in_names.append(vn)
             temp.append(vn)
         for key, value in pairs.items():
             vn = f"fe_opt_{key}"
-            ws[vn] = to_matlab(value)
+            if is_dataframe(value):
+                self._df_to_table_var(value, vn)  # DataFrame option value -> MATLAB table
+            else:
+                ws[vn] = to_matlab(value)
             opt_tokens.append(f"'{key}',{vn}")   # 'name', tempvar
             temp.append(vn)
 
@@ -277,6 +297,8 @@ class FsdaEngine:
             results = [self._marshal_var(vn) for vn in out_names]
         finally:
             self._clear(temp)
+        if frames:                                # opt-in: table-dicts -> DataFrames
+            results = [apply_frames(r) for r in results]
         return results[0] if nargout == 1 else tuple(results)
 
     def eval(self, expr: str, nargout: int = 1):
@@ -406,6 +428,61 @@ class FsdaEngine:
             result["RowNames"] = _cellstr_list(
                 self.eng.eval(f"{vn}.Properties.RowNames", nargout=1))
         return result
+
+    def _cellstr_to_var(self, values, vn: str) -> None:
+        """Build a MATLAB cellstr in workspace var `vn` from a Python list[str].
+
+        Each element crosses as a char scalar (a supported engine input); the cell is then
+        assembled MATLAB-side. Only the bridge's own temp names (`{vn}_e0`, ...) are ever
+        interpolated -- never the string CONTENTS -- so column/row labels are injection-safe.
+        """
+        ws = self.eng.workspace
+        elem_vars = []
+        try:
+            for k, v in enumerate(values):
+                ev = f"{vn}_e{k}"
+                ws[ev] = str(v)
+                elem_vars.append(ev)
+            self.eng.eval(f"{vn} = {{{','.join(elem_vars)}}};", nargout=0)
+        finally:
+            self._clear(elem_vars)
+
+    def _df_to_table_var(self, df, vn: str) -> None:
+        """Assemble a MATLAB `table` in workspace variable `vn` from a pandas DataFrame.
+
+        The inverse of `_table_to_dict`. Column names cross as a MATLAB cell (`fe_varnames`,
+        built by `_cellstr_to_var`) and feed `array2table(...,'VariableNames',fe_varnames)`
+        -- never string-interpolated. Explicit `VariableNames` are used verbatim (modern
+        MATLAB tables allow arbitrary variable-name text). A non-default row index becomes
+        the table's `RowNames`.
+
+        v1 supports **numeric / logical** columns only (the common FSDA design-matrix case);
+        string / categorical / datetime columns and a MultiIndex raise NotImplementedError,
+        consistent with the engine's existing struct-array / datetime limits.
+        """
+        raw = np.asarray(df.to_numpy())
+        if raw.dtype != bool and not np.issubdtype(raw.dtype, np.number):
+            raise NotImplementedError(
+                "pyfsda: DataFrame -> MATLAB table supports numeric/logical columns only in "
+                "v1; string / categorical / datetime columns are not yet marshalled.")
+        block = np.asarray(raw, dtype=float)
+        if block.ndim != 2:
+            block = block.reshape(len(df), -1)
+
+        ws = self.eng.workspace
+        ws["fe_block"] = matlab.double(block.tolist())
+        temp = ["fe_block", "fe_varnames"]
+        try:
+            self._cellstr_to_var([str(c) for c in df.columns], "fe_varnames")
+            self.eng.eval(
+                f"{vn} = array2table(fe_block,'VariableNames',fe_varnames);", nargout=0)
+            index = list(df.index)
+            if index != list(range(len(df))):        # non-default index -> RowNames
+                self._cellstr_to_var([str(i) for i in index], "fe_rownames")
+                temp.append("fe_rownames")
+                self.eng.eval(f"{vn}.Properties.RowNames = fe_rownames;", nargout=0)
+        finally:
+            self._clear(temp)
 
     # --- diagnostics ---------------------------------------------------------
     def which(self, name: str) -> str:

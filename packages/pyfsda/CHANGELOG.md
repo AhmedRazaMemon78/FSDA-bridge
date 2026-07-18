@@ -4,6 +4,20 @@ All notable changes to `pyfsda` are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [0.4.0] — unreleased
+
+### Added
+- **Optional pandas view at the Python boundary** (`pip install pyfsda[pandas]`, spec 019). pandas stays
+  optional and lazily imported — `import pyfsda` works without it, and the neutral
+  `dict {VariableNames, RowNames/RowTimes, data, height}` remains the default and the cross-language
+  contract (R and Julia surfaces are untouched).
+  - **Output:** `frames=True` returns `table`/`timetable` outputs as a `pandas.DataFrame`
+    (`pyfsda.<name>(..., frames=True)`); new public helper `pyfsda.to_dataframe(table_dict)` and
+    predicate `pyfsda.is_table_dict(obj)`.
+  - **Input:** a `pandas.DataFrame` argument is marshalled to a MATLAB `table` (`array2table`, names and
+    non-default index preserved). v1 supports numeric/logical columns; other column types raise
+    `NotImplementedError`.
+
 ## [0.3.0] — unreleased
 
 ### Added

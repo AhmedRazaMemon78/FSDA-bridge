@@ -48,7 +48,10 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=7", "build", "twine"]
+# pandas is OPTIONAL -- only needed for the frames=True DataFrame view and DataFrame
+# table inputs (see pyfsda.frames). `import pyfsda` works without it.
+pandas = ["pandas>=1.5"]
+dev = ["pytest>=7", "build", "twine", "pandas>=1.5"]
 
 [project.urls]
 Homepage = "https://github.com/UniprJRC/FSDA-bridge"

@@ -84,9 +84,25 @@ decoded MATLAB-side.
 Conventions: a 1-D input crosses as a MATLAB **row** (pass an `(n, 1)` array for a column); outputs
 keep MATLAB's natural shape (no silent reshape); MATLAB indices stay **1-based**.
 
-Reserved keywords consumed by the bridge are only `nargout`, `echo_output`, and `options`; every other
-keyword is forwarded to MATLAB (so FSDA's own `msg` option passes straight through). `echo_output=True`
-tees MATLAB's stdout/stderr to your terminal.
+Reserved keywords consumed by the bridge are only `nargout`, `echo_output`, `options`, and `frames`;
+every other keyword is forwarded to MATLAB (so FSDA's own `msg` option passes straight through).
+`echo_output=True` tees MATLAB's stdout/stderr to your terminal.
+
+### Optional pandas view (`pip install pyfsda[pandas]`)
+
+pandas is an **optional** dependency — `import pyfsda` works without it. When it is installed you get a
+DataFrame view over MATLAB tables, on the Python side only (the neutral dict stays the default and
+remains the cross-language contract):
+
+- **Output:** pass `frames=True` to receive `table`/`timetable` outputs as a `pandas.DataFrame`
+  (index from `RowNames`/`RowTimes`) — e.g. `out = pyfsda.univariatems(y, X, frames=True)`. The public
+  helper `pyfsda.to_dataframe(table_dict)` converts a dict you already have.
+- **Input:** pass a `pandas.DataFrame` argument and it is marshalled to a MATLAB `table`
+  (`array2table`, column names and any non-default index preserved). v1 covers numeric/logical columns;
+  string/categorical/datetime columns raise a clear `NotImplementedError`.
+
+Requesting `frames=True` (or passing a DataFrame) without pandas installed raises a clear
+`pip install pyfsda[pandas]` error.
 
 On the **first `pyfsda.<name>(...)` call**, pyfsda also prints (once, best-effort) the **latest FSDA
 release available on GitHub**, so you can check your install is current. `FsdaEngine.start()`

@@ -34,3 +34,40 @@ def test_mahalfs_matches_numpy():
         np.testing.assert_allclose(d, ref, rtol=0.0, atol=1e-9)
     finally:
         eng.stop()
+
+
+@pytest.mark.integration
+def test_dataframe_table_roundtrip():
+    """DataFrame input -> MATLAB table, and frames=True: table output -> DataFrame.
+
+    Uses base-MATLAB builtins only (istable / sortrows), so it needs no FSDA. A numeric
+    DataFrame must arrive MATLAB-side as a table; passing it through sortrows and reading
+    it back with frames=True must reproduce the columns and values within 1e-9.
+    """
+    pd = pytest.importorskip("pandas")
+    from pyfsda import is_table_dict, to_dataframe  # noqa: F401  (exported surface)
+    from pyfsda.frames import is_dataframe
+
+    fsda_root = os.environ.get("PYFSDA_FSDA_ROOT") or None
+    try:
+        eng = FsdaEngine.start(fsda_root=fsda_root, check_version=False)
+    except Exception as exc:                          # no MATLAB on this machine
+        pytest.skip(f"MATLAB not available: {exc}")
+    try:
+        df_in = pd.DataFrame({"aa": [1.0, 2.0, 3.0], "bb": [4.0, 5.0, 6.0]})
+
+        # input path: the DataFrame must be seen as a MATLAB table, not a numeric matrix
+        assert bool(np.asarray(eng.call("istable", df_in)).astype(bool).ravel()[0])
+
+        # output path: sortrows(T) -> table, viewed back as a DataFrame via frames=True
+        rt = eng.call("sortrows", df_in, frames=True)
+        assert is_dataframe(rt)
+        assert list(rt.columns) == ["aa", "bb"]       # VariableNames preserved
+        np.testing.assert_allclose(
+            rt[["aa", "bb"]].to_numpy(dtype=float),
+            df_in.to_numpy(dtype=float), rtol=0.0, atol=1e-9)
+
+        # default (frames omitted) still returns the neutral dict -- contract unchanged
+        assert is_table_dict(eng.call("sortrows", df_in))
+    finally:
+        eng.stop()
