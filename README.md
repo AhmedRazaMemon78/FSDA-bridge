@@ -24,8 +24,10 @@ version). Python 3.9–3.13.
 **Install** (currently on TestPyPI; deps aren't mirrored there, so `--no-deps`):
 
 ```bash
-pip install -i https://test.pypi.org/simple/ pyfsda==0.3.0 --no-deps
-# once it's on real PyPI:  pip install pyfsda
+pip install -i https://test.pypi.org/simple/ pyfsda==0.4.0 --no-deps
+# with the optional pandas view (real deps come from PyPI):
+pip install -i https://test.pypi.org/simple/ --extra-index-url https://pypi.org/simple "pyfsda[pandas]==0.4.0"
+# once it's on real PyPI:  pip install pyfsda        # or  pip install "pyfsda[pandas]"
 ```
 
 **Call any FSDA routine as a Python function** — the MATLAB session starts on first use and is reused:
@@ -42,9 +44,16 @@ pyfsda.stop()                                     # optional; also runs at exit
 `pyfsda.<name>` works for **any** FSDA routine (and `from pyfsda import Score` too). Prefer managing the
 session yourself? Use the explicit engine: `from pyfsda import FsdaEngine; eng = FsdaEngine.start(...)`.
 
+**New in 0.4.0 — optional pandas view** (`pip install pyfsda[pandas]`): pass `frames=True` to get
+`table`/`timetable` outputs back as a `pandas.DataFrame` (row/column labels preserved as the index and
+columns), and pass a `pandas.DataFrame` argument to send a MATLAB `table` in — e.g. a labeled
+contingency table straight into `corrNominal`. pandas is optional and lazily imported; the default
+return is still the neutral dict, so the shared engine and the R/Julia surfaces are unchanged.
+
 **Learn more:** runnable [`examples/`](packages/pyfsda/examples/) (`score_example_simple.py`,
-`score_example.py`, `smoke_test.py`), the package [README](packages/pyfsda/README.md), and
-[`CONTRIBUTING.md`](packages/pyfsda/CONTRIBUTING.md) (dev, self-hosted CI, release flow).
+`score_example.py`, `corrnominal_pandas_example.py`, `smoke_test.py`), the package
+[README](packages/pyfsda/README.md), and [`CONTRIBUTING.md`](packages/pyfsda/CONTRIBUTING.md)
+(dev, self-hosted CI, release flow).
 
 ---
 
@@ -127,6 +136,11 @@ structures. Function and option names interpolated into that statement are valid
 | 2-D `cell` (`M×N`) | nested `list` | decoded element-by-element (`_marshal_cell2d`) |
 | `struct` *holding* any of the above | `dict`, field-by-field | fallback path (`_marshal_struct`) |
 | graphics handle (`matlab.graphics.*`) | **not marshalled** | see the contract below |
+
+> The **`pyfsda` package** (0.4.0+) layers an optional, Python-only pandas view on top of this map
+> (`pip install pyfsda[pandas]`): `frames=True` returns a `table`/`timetable` as a `pandas.DataFrame`,
+> and a `pandas.DataFrame` argument is marshalled to a MATLAB `table`. It is a pyfsda-only convenience —
+> the shared engine here (and the R/Julia surfaces) still exchange the neutral dict above.
 
 ### Boundary conventions (where ports silently break)
 

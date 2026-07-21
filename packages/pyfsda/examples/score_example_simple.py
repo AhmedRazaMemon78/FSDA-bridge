@@ -1,6 +1,6 @@
 """Minimal pyfsda example — FSDA's Score (Box-Cox test) on the wool data."""
 import numpy as np
-import pyfsda
+import pyfsda as FS
 
 # wool data (Box & Cox, 1964): columns x1 x2 x3, and y = cycles to failure
 WOOL = np.array([
@@ -20,7 +20,7 @@ X = WOOL[:, :3]                         # the three factors
 la = [-1.0, -0.5, 0.0, 0.5, 1.0]        # Box-Cox lambdas to test
 
 # One call to FSDA's Score -- the MATLAB engine starts on first use.
-out = pyfsda.Score(y, X, la=la, intercept=True)
+out = FS.Score(y, X, la=la, intercept=True)
 
 # `out` is a dict (MATLAB struct -> Python dict); work with it like any dict + numpy array.
 print("out is a", type(out).__name__, "with keys", list(out.keys()))
