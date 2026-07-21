@@ -6,7 +6,7 @@
 # mahalFS_check.csv, Score_check.csv, FSR_mdr.csv, FSRaddt_Tdel.csv — plus constructed
 # struct/table round-trips and a live univariatems.
 #
-# Run (engine boot is slow; one session is reused):
+# Run (engine boot is slow; one session is reyused):
 #     export FSDA_DEV_VENV="/Users/aldocorbellini/miniconda3/bin/python"
 #     Rscript code/fsda_engine/check_engine.R [FSDA_ROOT]
 
