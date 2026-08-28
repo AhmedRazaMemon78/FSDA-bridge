@@ -14,7 +14,9 @@ repo holds two things:
   under `specs/`.
 
 ---
+## 👤 My Contributions
 
+I contributed to the development of the **R interface**, including the `score()` wrapper, Python/MATLAB Engine integration, automated tests, documentation, and numerical validation against the MATLAB/FSDA implementation.
 ## Using `pyfsda`
 
 **Requirements:** MATLAB with the FSDA Add-On on the path, and `matlabengine` **matching your MATLAB
