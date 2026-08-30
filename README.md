@@ -16,13 +16,18 @@ repo holds two things:
 ---
 ## 👤 My Contributions
 
-I contributed to the development of the **R interface**, including wrappers for the FSDA robust-statistics routines **`Score()` and `FSRfan()`**, through Python/MATLAB Engine integration.
+I contributed to the development of the **R interface for FSDA**, including the `Score()` and `FSRfan()` robust-statistics routines through Python/MATLAB Engine integration.
 
-- Implemented and tested R wrappers using `reticulate`
-- Added automated `testthat` tests and package documentation
-- Validated R outputs against the MATLAB/FSDA implementation
-- Improved test portability by bundling reference data and removing machine-specific paths
-- Verified numerical agreement within the required tolerance
+### FSRfan
+
+- Implemented the `FSRfan()` R wrapper with **roxygen2 documentation** and NAMESPACE export.
+- Added interface and **MATLAB/FSDA numerical agreement tests** using the official FSDA wool dataset.
+- Bundled reference data within the `fsdabridge` package under `inst/extdata/FSRfan/` to support reproducible testing.
+- Validated the implementation against MATLAB/FSDA with numerical agreement within **1e-9 tolerance**.
+- Full test suite: **85 PASS, 0 FAIL, 1 WARN, 0 SKIP**.
+- FSRfan-specific tests: **8 PASS** for live validation and **3 PASS** for package tests.
+
+**Merged contribution:** [FSDA-bridge PR #8](https://github.com/NourTerryS/FSDA-bridge/pull/8)
 - 
 ## Using `pyfsda`
 
