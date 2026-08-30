@@ -16,7 +16,14 @@ repo holds two things:
 ---
 ## 👤 My Contributions
 
-I contributed to the development of the **R interface**, including the `score()` wrapper, Python/MATLAB Engine integration, automated tests, documentation, and numerical validation against the MATLAB/FSDA implementation.
+I contributed to the development of the **R interface**, including wrappers for the FSDA robust-statistics routines **`Score()` and `FSRfan()`**, through Python/MATLAB Engine integration.
+
+- Implemented and tested R wrappers using `reticulate`
+- Added automated `testthat` tests and package documentation
+- Validated R outputs against the MATLAB/FSDA implementation
+- Improved test portability by bundling reference data and removing machine-specific paths
+- Verified numerical agreement within the required tolerance
+- 
 ## Using `pyfsda`
 
 **Requirements:** MATLAB with the FSDA Add-On on the path, and `matlabengine` **matching your MATLAB
